@@ -21,14 +21,28 @@ def set_seed(seed=RANDOM_SEED):
         torch.cuda.manual_seed_all(seed)
 
 # Model configuration
-# Options (in order of capability for arithmetic):
-# - "EleutherAI/pythia-160m" - Too small, can't do arithmetic (outputs nonsense)
+# Options (in order of arithmetic capability):
+#
+# SMALL MODELS (fast but limited math ability):
+# - "EleutherAI/pythia-160m" - Too small, can't do arithmetic (~26% on easy)
 # - "EleutherAI/pythia-410m" - Small but may work for easy examples
-# - "EleutherAI/pythia-1b" - Better for arithmetic, reasonable speed
-# - "gpt2" (124M) - Similar to pythia-160m, likely too small
+# - "EleutherAI/pythia-1b" - Better, ~26% accuracy on easy arithmetic
+# - "gpt2" (124M) - Too small
 # - "gpt2-medium" (355M) - Decent arithmetic ability
-# - "gpt2-large" (774M) - Good arithmetic, slower
-MODEL_NAME = "EleutherAI/pythia-1b"  # Good balance of size and capability
+# - "gpt2-large" (774M) - Good arithmetic
+#
+# MEDIUM MODELS (good math, needs ~8-12GB GPU):
+# - "EleutherAI/pythia-2.8b" - Larger Pythia, better at arithmetic
+# - "microsoft/phi-2" (2.7B) - Excellent reasoning/math for size, HIGHLY RECOMMENDED
+# - "Qwen/Qwen2-1.5B" - Good at math, efficient
+#
+# LARGE MODELS (excellent math, needs ~16-32GB GPU):
+# - "EleutherAI/pythia-6.9b" - Largest Pythia
+# - "Qwen/Qwen2-7B" - Very good at math and reasoning
+# - "deepseek-ai/deepseek-math-7b-base" - Specialized for math (best accuracy)
+#
+# Current selection:
+MODEL_NAME = "microsoft/phi-2"  # Excellent math performance, 2.7B params
 
 # Dataset configuration
 OPERATIONS = ["add", "sub", "mul", "max", "min"]

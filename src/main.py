@@ -16,17 +16,26 @@ from config import set_seed, DEVICE
 import time
 
 
-def run_full_pipeline(skip_existing=False):
+def run_full_pipeline(skip_existing=False, model_override=None):
     """
     Run the complete experimental pipeline.
 
     Args:
         skip_existing: If True, skip steps where output files already exist
+        model_override: If provided, use this model name instead of config default
     """
+    # Override model name if provided
+    if model_override:
+        import config
+        config.MODEL_NAME = model_override
+        print(f"Using model override: {model_override}")
+
     print("="*80)
     print("Arithmetic Reasoning Interpretability Experiment")
     print("="*80)
     print(f"Device: {DEVICE}")
+    from config import MODEL_NAME
+    print(f"Model: {MODEL_NAME}")
     print()
 
     # Set random seed
@@ -198,11 +207,17 @@ def main():
         action='store_true',
         help='Skip steps where output files already exist'
     )
+    parser.add_argument(
+        '--model',
+        type=str,
+        default=None,
+        help='Override model name (e.g., "microsoft/phi-2", "EleutherAI/pythia-2.8b")'
+    )
 
     args = parser.parse_args()
 
     start_time = time.time()
-    run_full_pipeline(skip_existing=args.skip_existing)
+    run_full_pipeline(skip_existing=args.skip_existing, model_override=args.model)
     elapsed = time.time() - start_time
 
     print(f"\nTotal time: {elapsed/60:.1f} minutes")
