@@ -21,7 +21,14 @@ def set_seed(seed=RANDOM_SEED):
         torch.cuda.manual_seed_all(seed)
 
 # Model configuration
-MODEL_NAME = "EleutherAI/pythia-160m"
+# Options (in order of capability for arithmetic):
+# - "EleutherAI/pythia-160m" - Too small, can't do arithmetic (outputs nonsense)
+# - "EleutherAI/pythia-410m" - Small but may work for easy examples
+# - "EleutherAI/pythia-1b" - Better for arithmetic, reasonable speed
+# - "gpt2" (124M) - Similar to pythia-160m, likely too small
+# - "gpt2-medium" (355M) - Decent arithmetic ability
+# - "gpt2-large" (774M) - Good arithmetic, slower
+MODEL_NAME = "EleutherAI/pythia-1b"  # Good balance of size and capability
 
 # Dataset configuration
 OPERATIONS = ["add", "sub", "mul", "max", "min"]
@@ -29,7 +36,7 @@ DIFFICULTY_LEVELS = ["easy"]  # Only use easy examples for now
 
 # Number of examples per (operation, difficulty) pair
 # For smaller subset: ~200-300 examples per pair → ~10k total
-EXAMPLES_PER_OP_DIFFICULTY = 400  # 5 ops × 1 difficulty × 400 = 2000 examples
+EXAMPLES_PER_OP_DIFFICULTY = 300  # 5 ops × 1 difficulty × 300 = 1500 examples
 
 # Difficulty ranges (inclusive)
 DIFFICULTY_RANGES = {
