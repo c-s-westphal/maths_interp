@@ -222,18 +222,19 @@ def generate_all_plots():
     probe_results = load_probe_results(hidden_dim=hidden_states['h1_all'].shape[2])
 
     # Load interaction scores
+    from config import INTERACTION_SCORES_PATH
     interaction_all = load_interaction_scores()
 
     try:
         interaction_correct = load_interaction_scores(
-            interaction_scores_path.replace('.csv', '_correct.csv')
+            INTERACTION_SCORES_PATH.replace('.csv', '_correct.csv')
         )
     except:
         interaction_correct = None
 
     try:
         interaction_incorrect = load_interaction_scores(
-            interaction_scores_path.replace('.csv', '_incorrect.csv')
+            INTERACTION_SCORES_PATH.replace('.csv', '_incorrect.csv')
         )
     except:
         interaction_incorrect = None

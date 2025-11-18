@@ -237,6 +237,7 @@ def load_probe_results(probes_dir=PROBES_DIR, features_path=FEATURES_PATH, hidde
 
     # Determine number of layers
     F1_all = data['F1_all']
+    F2_all = data['F2_all']
     num_layers = F1_all.shape[1]
 
     probes_op1 = []

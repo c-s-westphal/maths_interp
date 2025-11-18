@@ -68,7 +68,7 @@ def extract_hidden_states_single(model, input_ids, pos_op1, pos_op2):
     return h1_all_layers, h2_all_layers, logits
 
 
-def decode_model_answer(model, tokenizer, input_ids, max_new_tokens=10):
+def decode_model_answer(model, tokenizer, input_ids, max_new_tokens=10, debug=False):
     """
     Decode the model's answer by generating tokens.
 
@@ -91,6 +91,11 @@ def decode_model_answer(model, tokenizer, input_ids, max_new_tokens=10):
         generated_tokens = output_ids[0, len(input_ids):]
         generated_text = tokenizer.decode(generated_tokens, skip_special_tokens=True)
 
+        if debug:
+            prompt_text = tokenizer.decode(input_ids, skip_special_tokens=True)
+            print(f"Prompt: {prompt_text}")
+            print(f"Generated: '{generated_text}'")
+
         # Try to extract an integer from the generated text
         # Look for the first sequence of digits (possibly with a minus sign)
         import re
@@ -98,9 +103,14 @@ def decode_model_answer(model, tokenizer, input_ids, max_new_tokens=10):
         if match:
             try:
                 predicted_answer = int(match.group())
+                if debug:
+                    print(f"Parsed answer: {predicted_answer}")
                 return predicted_answer
             except ValueError:
                 pass
+
+        if debug:
+            print("Failed to parse answer")
 
     return None
 
@@ -150,15 +160,20 @@ def process_dataset_inference(df, model, tokenizer, batch_size=1):
         predicted_token_id = np.argmax(logits)
         Z_all[idx] = logits[predicted_token_id]
 
-        # Decode model's answer
-        predicted_answer = decode_model_answer(model, tokenizer, input_ids)
+        # Decode model's answer (debug first 5 examples)
+        debug = (idx < 5)
+        predicted_answer = decode_model_answer(model, tokenizer, input_ids, debug=debug)
         predicted_answers.append(predicted_answer)
 
         # Check if correct
         if predicted_answer is not None and predicted_answer == correct_answer:
             is_correct.append(True)
+            if debug:
+                print(f"✓ Correct! Expected: {correct_answer}\n")
         else:
             is_correct.append(False)
+            if debug:
+                print(f"✗ Incorrect. Expected: {correct_answer}, Got: {predicted_answer}\n")
 
     is_correct = np.array(is_correct)
 
