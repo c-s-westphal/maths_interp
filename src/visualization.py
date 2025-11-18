@@ -69,31 +69,47 @@ def plot_interaction_comparison(
         gt_data = interaction_gt[interaction_gt['op'] == op]
         baseline_data = interaction_baseline[interaction_baseline['op'] == op]
 
-        # Plot model output interaction
+        # Create twin axis for ground truth (right y-axis)
+        ax2 = ax.twinx()
+
+        # Plot model output interaction on LEFT y-axis (blue)
         if len(model_data) > 0:
-            ax.plot(model_data['layer'], model_data['interaction_score'],
+            line1 = ax.plot(model_data['layer'], model_data['interaction_score'],
                    marker='o', label='F1, F2 → model output', linewidth=2, color='blue')
+            ax.set_ylabel('Model Output Interaction', fontsize=9, color='blue')
+            ax.tick_params(axis='y', labelcolor='blue')
 
-        # Plot ground truth interaction
+        # Plot ground truth interaction on RIGHT y-axis (green)
         if len(gt_data) > 0:
-            ax.plot(gt_data['layer'], gt_data['interaction_score'],
+            line2 = ax2.plot(gt_data['layer'], gt_data['interaction_score'],
                    marker='s', label='F1, F2 → correct answer', linewidth=2, color='green')
+            ax2.set_ylabel('Correct Answer Interaction', fontsize=9, color='green')
+            ax2.tick_params(axis='y', labelcolor='green')
 
-        # Plot baseline (horizontal line)
+        # Plot baseline on RIGHT y-axis (red dashed)
         if len(baseline_data) > 0:
             baseline_score = baseline_data['interaction_score'].values[0]
             if len(model_data) > 0 or len(gt_data) > 0:
-                max_layer = max(
-                    model_data['layer'].max() if len(model_data) > 0 else 0,
-                    gt_data['layer'].max() if len(gt_data) > 0 else 0
-                )
-                ax.axhline(y=baseline_score, color='red', linestyle='--',
+                line3 = ax2.axhline(y=baseline_score, color='red', linestyle='--',
                           linewidth=2, label='x1, x2 → correct (baseline)')
 
         ax.set_xlabel('Layer Index', fontsize=10)
-        ax.set_ylabel('Interaction Score', fontsize=10)
         ax.set_title(f'{op.upper()}', fontsize=12, fontweight='bold')
-        ax.legend(fontsize=8)
+
+        # Combine legends from both axes
+        lines = []
+        labels = []
+        if len(model_data) > 0:
+            lines.extend(line1)
+            labels.append('F1, F2 → model output')
+        if len(gt_data) > 0:
+            lines.extend(line2)
+            labels.append('F1, F2 → correct answer')
+        if len(baseline_data) > 0:
+            lines.append(line3)
+            labels.append('x1, x2 → correct (baseline)')
+
+        ax.legend(lines, labels, fontsize=7, loc='upper left')
         ax.grid(True, alpha=0.3)
 
     # Remove extra subplot
