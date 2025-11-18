@@ -68,10 +68,13 @@ INTERACTION_LEARNING_RATE = 0.001
 INTERACTION_EPOCHS = 30
 INTERACTION_BATCH_SIZE = 128
 
-# Paths
-DATA_DIR = "data"
-RESULTS_DIR = "results"
-PLOTS_DIR = "plots"
+# Paths - Use absolute paths relative to project root
+# Get the project root directory (parent of src/)
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+DATA_DIR = os.path.join(PROJECT_ROOT, "data")
+RESULTS_DIR = os.path.join(PROJECT_ROOT, "results")
+PLOTS_DIR = os.path.join(PROJECT_ROOT, "plots")
 
 # File paths
 DATASET_PATH = os.path.join(DATA_DIR, "arithmetic_dataset.pkl")
