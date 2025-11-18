@@ -164,7 +164,8 @@ def run_full_pipeline(skip_existing=False):
     print(f"  - Hidden states: {HIDDEN_STATES_PATH}")
     print(f"  - Probe features: {FEATURES_PATH}")
     print(f"  - Interaction scores: {INTERACTION_SCORES_PATH}")
-    print(f"  - Plots: {os.path.dirname(PLOTS_DIR)}/plots/")
+    from config import PLOTS_DIR
+    print(f"  - Plots: {PLOTS_DIR}/")
     print("\nSee README.md for details on interpreting results.")
 
 

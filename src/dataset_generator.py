@@ -7,7 +7,8 @@ import pickle
 from typing import List, Dict
 from config import (
     OPERATIONS, DIFFICULTY_LEVELS, DIFFICULTY_RANGES,
-    EXAMPLES_PER_OP_DIFFICULTY, DATASET_PATH, set_seed
+    EXAMPLES_PER_OP_DIFFICULTY, DATASET_PATH, set_seed,
+    USE_FEW_SHOT, FEW_SHOT_EXAMPLES
 )
 
 
@@ -29,18 +30,26 @@ def compute_answer(x1: int, x2: int, op: str) -> int:
 
 def format_prompt(x1: int, x2: int, op: str) -> str:
     """Format the prompt for a given operation."""
+    # Base query without few-shot examples
     if op == "add":
-        return f"{x1} + {x2} ="
+        query = f"{x1} + {x2} ="
     elif op == "sub":
-        return f"{x1} - {x2} ="
+        query = f"{x1} - {x2} ="
     elif op == "mul":
-        return f"{x1} * {x2} ="
+        query = f"{x1} * {x2} ="
     elif op == "max":
-        return f"max({x1}, {x2}) ="
+        query = f"max({x1}, {x2}) ="
     elif op == "min":
-        return f"min({x1}, {x2}) ="
+        query = f"min({x1}, {x2}) ="
     else:
         raise ValueError(f"Unknown operation: {op}")
+
+    # Add few-shot examples if enabled
+    if USE_FEW_SHOT:
+        few_shot = FEW_SHOT_EXAMPLES.get(op, "")
+        return few_shot + query
+    else:
+        return query
 
 
 def generate_example(op: str, difficulty: str) -> Dict:

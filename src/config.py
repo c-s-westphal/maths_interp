@@ -25,17 +25,27 @@ MODEL_NAME = "EleutherAI/pythia-160m"
 
 # Dataset configuration
 OPERATIONS = ["add", "sub", "mul", "max", "min"]
-DIFFICULTY_LEVELS = ["easy", "medium", "hard"]
+DIFFICULTY_LEVELS = ["easy"]  # Only use easy examples for now
 
 # Number of examples per (operation, difficulty) pair
 # For smaller subset: ~200-300 examples per pair → ~10k total
-EXAMPLES_PER_OP_DIFFICULTY = 200  # 5 ops × 3 difficulties × 200 = 3000 examples
+EXAMPLES_PER_OP_DIFFICULTY = 400  # 5 ops × 1 difficulty × 400 = 2000 examples
 
 # Difficulty ranges (inclusive)
 DIFFICULTY_RANGES = {
     "easy": (1, 99),       # 1-2 digits
     "medium": (100, 999),  # 3 digits
     "hard": (1000, 9999)   # 4 digits
+}
+
+# Prompt format options
+USE_FEW_SHOT = True  # Add few-shot examples to help the model
+FEW_SHOT_EXAMPLES = {
+    "add": "2 + 3 = 5\n5 + 1 = 6\n",
+    "sub": "8 - 3 = 5\n9 - 4 = 5\n",
+    "mul": "2 * 3 = 6\n4 * 2 = 8\n",
+    "max": "max(2, 5) = 5\nmax(8, 3) = 8\n",
+    "min": "min(2, 5) = 2\nmin(8, 3) = 3\n"
 }
 
 # Probe configuration

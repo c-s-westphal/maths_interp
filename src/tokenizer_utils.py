@@ -19,6 +19,20 @@ def find_subsequence(seq: List[int], subseq: List[int]) -> int:
     return -1
 
 
+def find_last_subsequence(seq: List[int], subseq: List[int]) -> int:
+    """
+    Find the starting index of the LAST occurrence of a subsequence.
+    Returns -1 if not found.
+    Useful for finding operands in few-shot prompts (get the query, not examples).
+    """
+    n, m = len(seq), len(subseq)
+    last_idx = -1
+    for i in range(n - m + 1):
+        if seq[i:i+m] == subseq:
+            last_idx = i
+    return last_idx
+
+
 def find_operand_positions(prompt: str, x1: int, x2: int, tokenizer) -> Tuple[List[int], int, int]:
     """
     Tokenize the prompt and find the positions of the last tokens of x1 and x2.
@@ -47,21 +61,29 @@ def find_operand_positions(prompt: str, x1: int, x2: int, tokenizer) -> Tuple[Li
         tokenizer.encode(" " + str_x2, add_special_tokens=False),
     ]
 
-    # Find x1 position
+    # Import config to check if we're using few-shot
+    from config import USE_FEW_SHOT
+
+    # Find x1 position (use LAST occurrence if few-shot, to get the query not examples)
+    search_func = find_last_subsequence if USE_FEW_SHOT else find_subsequence
+
     pos_op1 = -1
     x1_tokens = None
     for variant in x1_tokens_variants:
-        idx = find_subsequence(input_ids, variant)
+        idx = search_func(input_ids, variant)
         if idx != -1:
             x1_tokens = variant
             pos_op1 = idx + len(variant) - 1  # Last token position
             break
 
-    # Find x2 position (search after x1)
+    # Find x2 position (search after x1, or use LAST if few-shot)
     pos_op2 = -1
     x2_tokens = None
     for variant in x2_tokens_variants:
-        idx = find_subsequence(input_ids, variant)
+        if USE_FEW_SHOT:
+            idx = find_last_subsequence(input_ids, variant)
+        else:
+            idx = find_subsequence(input_ids, variant)
         if idx != -1 and (pos_op1 == -1 or idx > pos_op1):
             x2_tokens = variant
             pos_op2 = idx + len(variant) - 1  # Last token position
