@@ -41,6 +41,75 @@ def plot_interaction_by_layer(interaction_df, save_path=None, title="Interaction
     plt.close()
 
 
+def plot_interaction_comparison(
+    interaction_model_output, interaction_gt, interaction_baseline,
+    save_path=None
+):
+    """
+    Plot all three types of interactions on the same graph:
+    1. F1, F2 → model output (Z)
+    2. F1, F2 → correct answer
+    3. x1, x2 → correct answer (baseline)
+
+    Args:
+        interaction_model_output: DataFrame with [layer, op, interaction_score] for model output
+        interaction_gt: DataFrame with [layer, op, interaction_score] for ground truth
+        interaction_baseline: DataFrame with [op, interaction_score] for baseline (no layers)
+        save_path: Path to save figure
+    """
+    # Create subplots for each operation
+    fig, axes = plt.subplots(2, 3, figsize=(18, 10))
+    axes = axes.flatten()
+
+    for idx, op in enumerate(OPERATIONS):
+        ax = axes[idx]
+
+        # Filter data for this operation
+        model_data = interaction_model_output[interaction_model_output['op'] == op]
+        gt_data = interaction_gt[interaction_gt['op'] == op]
+        baseline_data = interaction_baseline[interaction_baseline['op'] == op]
+
+        # Plot model output interaction
+        if len(model_data) > 0:
+            ax.plot(model_data['layer'], model_data['interaction_score'],
+                   marker='o', label='F1, F2 → model output', linewidth=2, color='blue')
+
+        # Plot ground truth interaction
+        if len(gt_data) > 0:
+            ax.plot(gt_data['layer'], gt_data['interaction_score'],
+                   marker='s', label='F1, F2 → correct answer', linewidth=2, color='green')
+
+        # Plot baseline (horizontal line)
+        if len(baseline_data) > 0:
+            baseline_score = baseline_data['interaction_score'].values[0]
+            if len(model_data) > 0 or len(gt_data) > 0:
+                max_layer = max(
+                    model_data['layer'].max() if len(model_data) > 0 else 0,
+                    gt_data['layer'].max() if len(gt_data) > 0 else 0
+                )
+                ax.axhline(y=baseline_score, color='red', linestyle='--',
+                          linewidth=2, label='x1, x2 → correct (baseline)')
+
+        ax.set_xlabel('Layer Index', fontsize=10)
+        ax.set_ylabel('Interaction Score', fontsize=10)
+        ax.set_title(f'{op.upper()}', fontsize=12, fontweight='bold')
+        ax.legend(fontsize=8)
+        ax.grid(True, alpha=0.3)
+
+    # Remove extra subplot
+    fig.delaxes(axes[5])
+
+    plt.tight_layout()
+
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        print(f"Plot saved to {save_path}")
+    else:
+        plt.show()
+
+    plt.close()
+
+
 def plot_interaction_correct_vs_incorrect(
     interaction_correct, interaction_incorrect, operation='mul',
     save_path=None
@@ -239,16 +308,39 @@ def generate_all_plots():
     except:
         interaction_incorrect = None
 
+    try:
+        interaction_gt = load_interaction_scores(
+            INTERACTION_SCORES_PATH.replace('.csv', '_gt.csv')
+        )
+    except:
+        interaction_gt = None
+
+    try:
+        interaction_baseline = load_interaction_scores(
+            INTERACTION_SCORES_PATH.replace('.csv', '_baseline.csv')
+        )
+    except:
+        interaction_baseline = None
+
     print("\nGenerating plots...")
 
-    # 1. Interaction by layer (all operations)
+    # 1. Interaction comparison: model output vs ground truth vs baseline
+    if interaction_gt is not None and interaction_baseline is not None:
+        plot_interaction_comparison(
+            interaction_all,
+            interaction_gt,
+            interaction_baseline,
+            save_path=os.path.join(PLOTS_DIR, 'interaction_comparison.png')
+        )
+
+    # 2. Interaction by layer (all operations) - model output only
     plot_interaction_by_layer(
         interaction_all,
         save_path=os.path.join(PLOTS_DIR, 'interaction_by_layer.png'),
-        title='Interaction Score by Layer (All Examples)'
+        title='Interaction Score by Layer: F1, F2 → Model Output'
     )
 
-    # 2. Interaction: correct vs incorrect (for multiplication)
+    # 3. Interaction: correct vs incorrect (for multiplication)
     if interaction_correct is not None and interaction_incorrect is not None:
         plot_interaction_correct_vs_incorrect(
             interaction_correct,
@@ -257,19 +349,19 @@ def generate_all_plots():
             save_path=os.path.join(PLOTS_DIR, 'interaction_correct_vs_incorrect_mul.png')
         )
 
-    # 3. Probe quality
+    # 4. Probe quality
     plot_probe_quality(
         probe_results['metrics'],
         save_path=os.path.join(PLOTS_DIR, 'probe_quality.png')
     )
 
-    # 4. Model accuracy by operation
+    # 5. Model accuracy by operation
     plot_model_accuracy_by_operation(
         df,
         save_path=os.path.join(PLOTS_DIR, 'accuracy_by_operation.png')
     )
 
-    # 5. Interaction heatmap
+    # 6. Interaction heatmap
     plot_interaction_heatmap(
         interaction_all,
         save_path=os.path.join(PLOTS_DIR, 'interaction_heatmap.png')

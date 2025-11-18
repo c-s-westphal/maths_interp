@@ -177,16 +177,67 @@ def compute_interaction_score(F1, F2, Z, verbose=False):
     return interaction_score, component_scores
 
 
-def compute_all_interactions(F1_all, F2_all, Z_all, df, filter_by=None):
+def compute_baseline_interaction(x1_all, x2_all, target_all, df, filter_by=None):
+    """
+    Compute baseline interaction using raw operand values (no layers).
+
+    Args:
+        x1_all: [num_examples] - raw operand 1 values
+        x2_all: [num_examples] - raw operand 2 values
+        target_all: [num_examples] - target values (e.g., correct_answer)
+        df: DataFrame with metadata
+        filter_by: Optional dict to filter examples
+
+    Returns:
+        DataFrame with columns: op, interaction_score
+    """
+    results = []
+
+    print("Computing baseline interaction scores (raw numbers)...")
+
+    for op in tqdm(OPERATIONS, desc="Operations"):
+        # Filter by operation
+        op_mask = df['op'] == op
+
+        # Apply additional filters
+        if filter_by:
+            for key, value in filter_by.items():
+                op_mask &= (df[key] == value)
+
+        op_indices = np.where(op_mask)[0]
+
+        if len(op_indices) < 100:
+            print(f"Skipping {op} (only {len(op_indices)} examples)")
+            continue
+
+        # Extract raw values for this operation
+        x1 = x1_all[op_indices].reshape(-1, 1)  # Reshape to 2D
+        x2 = x2_all[op_indices].reshape(-1, 1)
+        target = target_all[op_indices]
+
+        # Compute interaction score
+        interaction_score, _ = compute_interaction_score(x1, x2, target)
+
+        results.append({
+            'op': op,
+            'interaction_score': interaction_score,
+            'num_examples': len(op_indices)
+        })
+
+    return pd.DataFrame(results)
+
+
+def compute_all_interactions(F1_all, F2_all, target_all, df, filter_by=None, target_name="Z"):
     """
     Compute interaction scores for all layers and operations.
 
     Args:
         F1_all: [num_examples, num_layers, feature_dim]
         F2_all: [num_examples, num_layers, feature_dim]
-        Z_all: [num_examples]
+        target_all: [num_examples] - can be Z (model output) or correct_answer
         df: DataFrame with metadata (op, difficulty, is_correct)
         filter_by: Optional dict to filter examples (e.g., {'is_correct': True})
+        target_name: Name of target for printing (e.g., "Z" or "correct_answer")
 
     Returns:
         DataFrame with columns: layer, op, interaction_score
@@ -195,7 +246,7 @@ def compute_all_interactions(F1_all, F2_all, Z_all, df, filter_by=None):
 
     results = []
 
-    print("Computing interaction scores...")
+    print(f"Computing interaction scores (predicting {target_name})...")
 
     for op in tqdm(OPERATIONS, desc="Operations"):
         # Filter by operation
@@ -216,10 +267,10 @@ def compute_all_interactions(F1_all, F2_all, Z_all, df, filter_by=None):
             # Extract features for this layer and operation
             F1 = F1_all[op_indices, layer_idx, :]
             F2 = F2_all[op_indices, layer_idx, :]
-            Z = Z_all[op_indices]
+            target = target_all[op_indices]
 
             # Compute interaction score
-            interaction_score, _ = compute_interaction_score(F1, F2, Z)
+            interaction_score, _ = compute_interaction_score(F1, F2, target)
 
             results.append({
                 'layer': layer_idx,

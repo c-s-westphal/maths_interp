@@ -114,36 +114,56 @@ def run_full_pipeline(skip_existing=False):
     print("STEP 5: Compute Interaction Scores")
     print("="*80)
 
-    from interaction_analysis import compute_all_interactions, save_interaction_scores
+    from interaction_analysis import compute_all_interactions, compute_baseline_interaction, save_interaction_scores
     from config import INTERACTION_SCORES_PATH
 
     F1_all = probe_results['F1_all']
     F2_all = probe_results['F2_all']
     Z_all = hidden_states['Z_all']
+    correct_answers = df['correct_answer'].values
+    x1_values = df['x1'].values
+    x2_values = df['x2'].values
 
-    # All examples
+    # Type 1: Interaction(F1, F2 → Z) - predicting model output
     if skip_existing and os.path.exists(INTERACTION_SCORES_PATH):
-        print(f"Interaction scores already exist, skipping...")
+        print(f"Interaction scores (→ Z) already exist, skipping...")
     else:
-        print("\nComputing interaction scores for all examples...")
-        interaction_df_all = compute_all_interactions(F1_all, F2_all, Z_all, df)
+        print("\n[1/3] Computing interaction: F1, F2 → model output (Z)...")
+        interaction_df_all = compute_all_interactions(F1_all, F2_all, Z_all, df, target_name="model_output")
         save_interaction_scores(interaction_df_all)
 
-    # Correct examples only
+    # Type 2: Interaction(F1, F2 → correct_answer) - predicting ground truth
+    gt_path = INTERACTION_SCORES_PATH.replace('.csv', '_gt.csv')
+    if not (skip_existing and os.path.exists(gt_path)):
+        print("\n[2/3] Computing interaction: F1, F2 → correct answer...")
+        interaction_df_gt = compute_all_interactions(
+            F1_all, F2_all, correct_answers, df, target_name="correct_answer"
+        )
+        save_interaction_scores(interaction_df_gt, gt_path)
+
+    # Type 3: Baseline interaction(x1, x2 → correct_answer) - raw numbers
+    baseline_path = INTERACTION_SCORES_PATH.replace('.csv', '_baseline.csv')
+    if not (skip_existing and os.path.exists(baseline_path)):
+        print("\n[3/3] Computing baseline interaction: x1, x2 → correct answer (no layers)...")
+        interaction_df_baseline = compute_baseline_interaction(
+            x1_values, x2_values, correct_answers, df
+        )
+        save_interaction_scores(interaction_df_baseline, baseline_path)
+
+    # Also compute for correct/incorrect (using model output Z)
     correct_path = INTERACTION_SCORES_PATH.replace('.csv', '_correct.csv')
     if not (skip_existing and os.path.exists(correct_path)):
         print("\nComputing interaction scores for correct examples...")
         interaction_df_correct = compute_all_interactions(
-            F1_all, F2_all, Z_all, df, filter_by={'is_correct': True}
+            F1_all, F2_all, Z_all, df, filter_by={'is_correct': True}, target_name="model_output"
         )
         save_interaction_scores(interaction_df_correct, correct_path)
 
-    # Incorrect examples only
     incorrect_path = INTERACTION_SCORES_PATH.replace('.csv', '_incorrect.csv')
     if not (skip_existing and os.path.exists(incorrect_path)):
         print("\nComputing interaction scores for incorrect examples...")
         interaction_df_incorrect = compute_all_interactions(
-            F1_all, F2_all, Z_all, df, filter_by={'is_correct': False}
+            F1_all, F2_all, Z_all, df, filter_by={'is_correct': False}, target_name="model_output"
         )
         save_interaction_scores(interaction_df_incorrect, incorrect_path)
 
