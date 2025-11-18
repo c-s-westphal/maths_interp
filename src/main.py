@@ -1,0 +1,191 @@
+"""
+Main pipeline for arithmetic reasoning interpretability experiment.
+
+This script orchestrates the entire experiment:
+1. Generate dataset
+2. Tokenize and find operand positions
+3. Run model inference and extract hidden states
+4. Train numeric-decoding probes
+5. Compute interaction scores
+6. Generate visualizations
+"""
+import os
+import sys
+import argparse
+from config import set_seed, DEVICE
+import time
+
+
+def run_full_pipeline(skip_existing=False):
+    """
+    Run the complete experimental pipeline.
+
+    Args:
+        skip_existing: If True, skip steps where output files already exist
+    """
+    print("="*80)
+    print("Arithmetic Reasoning Interpretability Experiment")
+    print("="*80)
+    print(f"Device: {DEVICE}")
+    print()
+
+    # Set random seed
+    set_seed()
+
+    # Step 1: Generate dataset
+    print("\n" + "="*80)
+    print("STEP 1: Generate Arithmetic Dataset")
+    print("="*80)
+
+    from config import DATASET_PATH
+    if skip_existing and os.path.exists(DATASET_PATH):
+        print(f"Dataset already exists at {DATASET_PATH}, skipping generation...")
+        from dataset_generator import load_dataset
+        df = load_dataset()
+    else:
+        from dataset_generator import generate_dataset, save_dataset
+        df = generate_dataset()
+        save_dataset(df)
+
+    # Step 2: Tokenization
+    print("\n" + "="*80)
+    print("STEP 2: Tokenize and Find Operand Positions")
+    print("="*80)
+
+    from model_inference import load_model_and_tokenizer
+    from tokenizer_utils import process_dataset_tokenization
+    from dataset_generator import save_dataset
+
+    model, tokenizer = load_model_and_tokenizer()
+
+    if 'input_ids' not in df.columns or df['input_ids'].isna().any():
+        df = process_dataset_tokenization(df, tokenizer)
+        save_dataset(df)
+    else:
+        print("Dataset already tokenized, skipping...")
+
+    # Step 3: Model inference
+    print("\n" + "="*80)
+    print("STEP 3: Run Model Inference and Extract Hidden States")
+    print("="*80)
+
+    from config import HIDDEN_STATES_PATH
+    if skip_existing and os.path.exists(HIDDEN_STATES_PATH):
+        print(f"Hidden states already exist at {HIDDEN_STATES_PATH}, skipping inference...")
+        from model_inference import load_hidden_states
+        hidden_states = load_hidden_states()
+    else:
+        from model_inference import process_dataset_inference, save_hidden_states
+        hidden_states = process_dataset_inference(df, model, tokenizer)
+        save_hidden_states(hidden_states)
+
+        # Update dataframe with predictions
+        df['predicted_answer'] = hidden_states['predicted_answers']
+        df['is_correct'] = hidden_states['is_correct']
+        save_dataset(df)
+
+    # Reload dataset with predictions
+    from dataset_generator import load_dataset
+    df = load_dataset()
+
+    # Step 4: Train probes
+    print("\n" + "="*80)
+    print("STEP 4: Train Numeric-Decoding Probes")
+    print("="*80)
+
+    from config import FEATURES_PATH
+    if skip_existing and os.path.exists(FEATURES_PATH):
+        print(f"Probe features already exist at {FEATURES_PATH}, skipping training...")
+        from probe_training import load_probe_results
+        probe_results = load_probe_results(hidden_dim=hidden_states['h1_all'].shape[2])
+    else:
+        from probe_training import train_probes_all_layers, save_probe_results
+
+        h1_all = hidden_states['h1_all']
+        h2_all = hidden_states['h2_all']
+        x1_values = df['x1'].values
+        x2_values = df['x2'].values
+
+        probe_results = train_probes_all_layers(h1_all, h2_all, x1_values, x2_values)
+        save_probe_results(probe_results)
+
+    # Step 5: Compute interaction scores
+    print("\n" + "="*80)
+    print("STEP 5: Compute Interaction Scores")
+    print("="*80)
+
+    from interaction_analysis import compute_all_interactions, save_interaction_scores
+    from config import INTERACTION_SCORES_PATH
+
+    F1_all = probe_results['F1_all']
+    F2_all = probe_results['F2_all']
+    Z_all = hidden_states['Z_all']
+
+    # All examples
+    if skip_existing and os.path.exists(INTERACTION_SCORES_PATH):
+        print(f"Interaction scores already exist, skipping...")
+    else:
+        print("\nComputing interaction scores for all examples...")
+        interaction_df_all = compute_all_interactions(F1_all, F2_all, Z_all, df)
+        save_interaction_scores(interaction_df_all)
+
+    # Correct examples only
+    correct_path = INTERACTION_SCORES_PATH.replace('.csv', '_correct.csv')
+    if not (skip_existing and os.path.exists(correct_path)):
+        print("\nComputing interaction scores for correct examples...")
+        interaction_df_correct = compute_all_interactions(
+            F1_all, F2_all, Z_all, df, filter_by={'is_correct': True}
+        )
+        save_interaction_scores(interaction_df_correct, correct_path)
+
+    # Incorrect examples only
+    incorrect_path = INTERACTION_SCORES_PATH.replace('.csv', '_incorrect.csv')
+    if not (skip_existing and os.path.exists(incorrect_path)):
+        print("\nComputing interaction scores for incorrect examples...")
+        interaction_df_incorrect = compute_all_interactions(
+            F1_all, F2_all, Z_all, df, filter_by={'is_correct': False}
+        )
+        save_interaction_scores(interaction_df_incorrect, incorrect_path)
+
+    # Step 6: Generate visualizations
+    print("\n" + "="*80)
+    print("STEP 6: Generate Visualizations")
+    print("="*80)
+
+    from visualization import generate_all_plots
+    generate_all_plots()
+
+    # Summary
+    print("\n" + "="*80)
+    print("EXPERIMENT COMPLETE!")
+    print("="*80)
+    print("\nResults saved in:")
+    print(f"  - Dataset: {DATASET_PATH}")
+    print(f"  - Hidden states: {HIDDEN_STATES_PATH}")
+    print(f"  - Probe features: {FEATURES_PATH}")
+    print(f"  - Interaction scores: {INTERACTION_SCORES_PATH}")
+    print(f"  - Plots: {os.path.dirname(PLOTS_DIR)}/plots/")
+    print("\nSee README.md for details on interpreting results.")
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Run arithmetic reasoning interpretability experiment"
+    )
+    parser.add_argument(
+        '--skip-existing',
+        action='store_true',
+        help='Skip steps where output files already exist'
+    )
+
+    args = parser.parse_args()
+
+    start_time = time.time()
+    run_full_pipeline(skip_existing=args.skip_existing)
+    elapsed = time.time() - start_time
+
+    print(f"\nTotal time: {elapsed/60:.1f} minutes")
+
+
+if __name__ == "__main__":
+    main()
