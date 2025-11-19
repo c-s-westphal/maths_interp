@@ -174,7 +174,7 @@ def plot_probe_quality(metrics, save_path=None):
     Plot probe quality (R² scores) vs layer.
 
     Args:
-        metrics: Dictionary with r2_op1 and r2_op2 lists
+        metrics: Dictionary with r2_op1, r2_op2, r2_correct and MAE lists
         save_path: Path to save figure
     """
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
@@ -184,6 +184,7 @@ def plot_probe_quality(metrics, save_path=None):
     # R² scores
     ax1.plot(layers, metrics['r2_op1'], marker='o', label='Operand 1', linewidth=2)
     ax1.plot(layers, metrics['r2_op2'], marker='s', label='Operand 2', linewidth=2)
+    ax1.plot(layers, metrics['r2_correct'], marker='^', label='Correct Answer', linewidth=2)
     ax1.set_xlabel('Layer Index', fontsize=12)
     ax1.set_ylabel('R² Score', fontsize=12)
     ax1.set_title('Probe Quality: R² Score by Layer', fontsize=14)
@@ -193,6 +194,7 @@ def plot_probe_quality(metrics, save_path=None):
     # MAE scores
     ax2.plot(layers, metrics['mae_op1'], marker='o', label='Operand 1', linewidth=2)
     ax2.plot(layers, metrics['mae_op2'], marker='s', label='Operand 2', linewidth=2)
+    ax2.plot(layers, metrics['mae_correct'], marker='^', label='Correct Answer', linewidth=2)
     ax2.set_xlabel('Layer Index', fontsize=12)
     ax2.set_ylabel('Mean Absolute Error', fontsize=12)
     ax2.set_title('Probe Quality: MAE by Layer', fontsize=14)

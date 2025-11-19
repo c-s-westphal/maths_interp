@@ -112,10 +112,14 @@ def run_full_pipeline(skip_existing=False, model_override=None):
 
         h1_all = hidden_states['h1_all']
         h2_all = hidden_states['h2_all']
+        h_output_all = hidden_states['h_output_all']
         x1_values = df['x1'].values
         x2_values = df['x2'].values
+        correct_answers = df['correct_answer'].values
 
-        probe_results = train_probes_all_layers(h1_all, h2_all, x1_values, x2_values)
+        probe_results = train_probes_all_layers(
+            h1_all, h2_all, h_output_all, x1_values, x2_values, correct_answers
+        )
         save_probe_results(probe_results)
 
     # Step 5: Compute interaction scores

@@ -38,6 +38,7 @@ def extract_hidden_states_single(model, input_ids, pos_op1, pos_op2):
     Returns:
         h1_all_layers: List of tensors, one per layer (shape: [hidden_dim])
         h2_all_layers: List of tensors, one per layer (shape: [hidden_dim])
+        h_output_all_layers: List of tensors, one per layer (shape: [hidden_dim])
         logits: Output logits at the last position (shape: [vocab_size])
     """
     with torch.no_grad():
@@ -55,17 +56,23 @@ def extract_hidden_states_single(model, input_ids, pos_op1, pos_op2):
         # Extract operand representations from each layer
         h1_all_layers = []
         h2_all_layers = []
+        h_output_all_layers = []
+
+        # Output position is the last token (where model predicts the answer)
+        pos_output = len(input_ids) - 1
 
         for layer_idx in range(len(hidden_states)):
             h1 = hidden_states[layer_idx][0, pos_op1, :].cpu().numpy()
             h2 = hidden_states[layer_idx][0, pos_op2, :].cpu().numpy()
+            h_output = hidden_states[layer_idx][0, pos_output, :].cpu().numpy()
             h1_all_layers.append(h1)
             h2_all_layers.append(h2)
+            h_output_all_layers.append(h_output)
 
         # Extract logits at the last position
         logits = outputs.logits[0, -1, :].cpu().numpy()
 
-    return h1_all_layers, h2_all_layers, logits
+    return h1_all_layers, h2_all_layers, h_output_all_layers, logits
 
 
 def decode_model_answer(model, tokenizer, input_ids, max_new_tokens=10, debug=False):
@@ -123,6 +130,7 @@ def process_dataset_inference(df, model, tokenizer, batch_size=1):
         Dictionary with:
             - h1_all: Shape [num_examples, num_layers, hidden_dim]
             - h2_all: Shape [num_examples, num_layers, hidden_dim]
+            - h_output_all: Shape [num_examples, num_layers, hidden_dim]
             - Z_all: Shape [num_examples] - logit of predicted token
             - predicted_answers: List of predicted answers
             - is_correct: Boolean array
@@ -136,6 +144,7 @@ def process_dataset_inference(df, model, tokenizer, batch_size=1):
     # Pre-allocate arrays
     h1_all = np.zeros((num_examples, num_layers, hidden_dim), dtype=np.float32)
     h2_all = np.zeros((num_examples, num_layers, hidden_dim), dtype=np.float32)
+    h_output_all = np.zeros((num_examples, num_layers, hidden_dim), dtype=np.float32)
     Z_all = np.zeros(num_examples, dtype=np.float32)
     predicted_answers = []
     is_correct = []
@@ -147,7 +156,7 @@ def process_dataset_inference(df, model, tokenizer, batch_size=1):
         correct_answer = row['correct_answer']
 
         # Extract hidden states
-        h1_layers, h2_layers, logits = extract_hidden_states_single(
+        h1_layers, h2_layers, h_output_layers, logits = extract_hidden_states_single(
             model, input_ids, pos_op1, pos_op2
         )
 
@@ -155,6 +164,7 @@ def process_dataset_inference(df, model, tokenizer, batch_size=1):
         for layer_idx in range(num_layers):
             h1_all[idx, layer_idx] = h1_layers[layer_idx]
             h2_all[idx, layer_idx] = h2_layers[layer_idx]
+            h_output_all[idx, layer_idx] = h_output_layers[layer_idx]
 
         # Get predicted token and its logit
         predicted_token_id = np.argmax(logits)
@@ -187,6 +197,7 @@ def process_dataset_inference(df, model, tokenizer, batch_size=1):
     return {
         'h1_all': h1_all,
         'h2_all': h2_all,
+        'h_output_all': h_output_all,
         'Z_all': Z_all,
         'predicted_answers': predicted_answers,
         'is_correct': is_correct

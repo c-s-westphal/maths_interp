@@ -106,8 +106,14 @@ def compute_interaction_score(F1, F2, Z, verbose=False):
     """
     Compute interaction score using shuffling approach.
 
+    Args:
+        F1: Features for operand 1
+        F2: Features for operand 2
+        Z: Target values
+        verbose: Print detailed scores
+
     Returns:
-        interaction_score: float
+        interaction_score: float (can be negative)
         component_scores: dict with detailed breakdown
     """
     # Concatenate features
@@ -154,7 +160,8 @@ def compute_interaction_score(F1, F2, Z, verbose=False):
     delta_2 = S_all - S_shuf_F2
     delta_12 = S_all - S_shuf_both
 
-    interaction_score = max(0.0, delta_12 - 0.5 * (delta_1 + delta_2))
+    # Interaction score (allowing negative values)
+    interaction_score = delta_12 - 0.5 * (delta_1 + delta_2)
 
     component_scores = {
         'S_all': S_all,
@@ -206,7 +213,7 @@ def compute_baseline_interaction(x1_all, x2_all, target_all, df, filter_by=None)
 
         op_indices = np.where(op_mask)[0]
 
-        if len(op_indices) < 100:
+        if len(op_indices) < 5:
             print(f"Skipping {op} (only {len(op_indices)} examples)")
             continue
 
@@ -259,7 +266,7 @@ def compute_all_interactions(F1_all, F2_all, target_all, df, filter_by=None, tar
 
         op_indices = np.where(op_mask)[0]
 
-        if len(op_indices) < 100:  # Skip if too few examples
+        if len(op_indices) < 5:  # Skip if too few examples
             print(f"Skipping {op} (only {len(op_indices)} examples)")
             continue
 

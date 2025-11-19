@@ -46,11 +46,12 @@ MODEL_NAME = "microsoft/phi-2"  # Excellent math performance, 2.7B params
 
 # Dataset configuration
 OPERATIONS = ["add", "sub", "mul", "max", "min"]
-DIFFICULTY_LEVELS = ["easy"]  # Only use easy examples for now
+DIFFICULTY_LEVELS = ["easy", "medium", "hard"]  # Use all difficulty levels
 
 # Number of examples per (operation, difficulty) pair
-# For smaller subset: ~200-300 examples per pair → ~10k total
-EXAMPLES_PER_OP_DIFFICULTY = 300  # 5 ops × 1 difficulty × 300 = 1500 examples
+# For larger dataset suitable for bigger models:
+# 5 ops × 3 difficulties × 1000 = 15,000 examples
+EXAMPLES_PER_OP_DIFFICULTY = 1000
 
 # Difficulty ranges (inclusive)
 DIFFICULTY_RANGES = {
@@ -61,12 +62,13 @@ DIFFICULTY_RANGES = {
 
 # Prompt format options
 USE_FEW_SHOT = True  # Add few-shot examples to help the model
+# Updated few-shot examples with diverse difficulty levels
 FEW_SHOT_EXAMPLES = {
-    "add": "2 + 3 = 5\n5 + 1 = 6\n",
-    "sub": "8 - 3 = 5\n9 - 4 = 5\n",
-    "mul": "2 * 3 = 6\n4 * 2 = 8\n",
-    "max": "max(2, 5) = 5\nmax(8, 3) = 8\n",
-    "min": "min(2, 5) = 2\nmin(8, 3) = 3\n"
+    "add": "2 + 3 = 5\n47 + 28 = 75\n234 + 567 = 801\n",
+    "sub": "8 - 3 = 5\n95 - 42 = 53\n876 - 234 = 642\n",
+    "mul": "2 * 3 = 6\n12 * 8 = 96\n45 * 23 = 1035\n",
+    "max": "max(2, 5) = 5\nmax(73, 28) = 73\nmax(456, 789) = 789\n",
+    "min": "min(2, 5) = 2\nmin(73, 28) = 28\nmin(456, 789) = 456\n"
 }
 
 # Probe configuration

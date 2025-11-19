@@ -128,36 +128,44 @@ def extract_features_from_probe(probe, X):
         return features.cpu().numpy()
 
 
-def train_probes_all_layers(h1_all, h2_all, x1_values, x2_values):
+def train_probes_all_layers(h1_all, h2_all, h_output_all, x1_values, x2_values, correct_answers):
     """
     Train numeric probes for all layers.
 
     Args:
         h1_all: [num_examples, num_layers, hidden_dim]
         h2_all: [num_examples, num_layers, hidden_dim]
+        h_output_all: [num_examples, num_layers, hidden_dim]
         x1_values: [num_examples]
         x2_values: [num_examples]
+        correct_answers: [num_examples]
 
     Returns:
         Dictionary with:
             - probes_op1: List of probes for operand 1
             - probes_op2: List of probes for operand 2
+            - probes_correct: List of probes for correct answer
             - F1_all: [num_examples, num_layers, probe_hidden_dim]
             - F2_all: [num_examples, num_layers, probe_hidden_dim]
+            - F_correct_all: [num_examples, num_layers, probe_hidden_dim]
             - metrics: Dictionary of R² and MAE per layer
     """
     num_examples, num_layers, hidden_dim = h1_all.shape
 
     probes_op1 = []
     probes_op2 = []
+    probes_correct = []
     F1_all = np.zeros((num_examples, num_layers, PROBE_HIDDEN_DIM), dtype=np.float32)
     F2_all = np.zeros((num_examples, num_layers, PROBE_HIDDEN_DIM), dtype=np.float32)
+    F_correct_all = np.zeros((num_examples, num_layers, PROBE_HIDDEN_DIM), dtype=np.float32)
 
     metrics = {
         'r2_op1': [],
         'mae_op1': [],
         'r2_op2': [],
-        'mae_op2': []
+        'mae_op2': [],
+        'r2_correct': [],
+        'mae_correct': []
     }
 
     print(f"Training probes for {num_layers} layers...")
@@ -166,6 +174,7 @@ def train_probes_all_layers(h1_all, h2_all, x1_values, x2_values):
         # Extract hidden states for this layer
         h1_layer = h1_all[:, layer_idx, :]
         h2_layer = h2_all[:, layer_idx, :]
+        h_output_layer = h_output_all[:, layer_idx, :]
 
         # Split data
         indices = np.arange(num_examples)
@@ -193,19 +202,33 @@ def train_probes_all_layers(h1_all, h2_all, x1_values, x2_values):
         metrics['r2_op2'].append(r2_2)
         metrics['mae_op2'].append(mae_2)
 
+        # Train probe for correct answer
+        probe_correct, r2_correct, mae_correct = train_probe(
+            h_output_layer[train_idx], correct_answers[train_idx],
+            h_output_layer[val_idx], correct_answers[val_idx],
+            hidden_dim
+        )
+        probes_correct.append(probe_correct)
+        metrics['r2_correct'].append(r2_correct)
+        metrics['mae_correct'].append(mae_correct)
+
         # Extract features for all examples
         F1_all[:, layer_idx, :] = extract_features_from_probe(probe1, h1_layer)
         F2_all[:, layer_idx, :] = extract_features_from_probe(probe2, h2_layer)
+        F_correct_all[:, layer_idx, :] = extract_features_from_probe(probe_correct, h_output_layer)
 
     print("\nProbe training complete!")
     print(f"Average R² (op1): {np.mean(metrics['r2_op1']):.3f}")
     print(f"Average R² (op2): {np.mean(metrics['r2_op2']):.3f}")
+    print(f"Average R² (correct answer): {np.mean(metrics['r2_correct']):.3f}")
 
     return {
         'probes_op1': probes_op1,
         'probes_op2': probes_op2,
+        'probes_correct': probes_correct,
         'F1_all': F1_all,
         'F2_all': F2_all,
+        'F_correct_all': F_correct_all,
         'metrics': metrics
     }
 
@@ -213,17 +236,19 @@ def train_probes_all_layers(h1_all, h2_all, x1_values, x2_values):
 def save_probe_results(probe_results, probes_dir=PROBES_DIR, features_path=FEATURES_PATH):
     """Save probe models and features."""
     # Save probe models
-    for layer_idx, (probe1, probe2) in enumerate(zip(
-        probe_results['probes_op1'], probe_results['probes_op2']
+    for layer_idx, (probe1, probe2, probe_correct) in enumerate(zip(
+        probe_results['probes_op1'], probe_results['probes_op2'], probe_results['probes_correct']
     )):
         torch.save(probe1.state_dict(), os.path.join(probes_dir, f'probe_op1_layer{layer_idx}.pt'))
         torch.save(probe2.state_dict(), os.path.join(probes_dir, f'probe_op2_layer{layer_idx}.pt'))
+        torch.save(probe_correct.state_dict(), os.path.join(probes_dir, f'probe_correct_layer{layer_idx}.pt'))
 
     # Save features and metrics
     np.savez_compressed(
         features_path,
         F1_all=probe_results['F1_all'],
         F2_all=probe_results['F2_all'],
+        F_correct_all=probe_results['F_correct_all'],
         **probe_results['metrics']
     )
 
@@ -238,10 +263,12 @@ def load_probe_results(probes_dir=PROBES_DIR, features_path=FEATURES_PATH, hidde
     # Determine number of layers
     F1_all = data['F1_all']
     F2_all = data['F2_all']
+    F_correct_all = data['F_correct_all']
     num_layers = F1_all.shape[1]
 
     probes_op1 = []
     probes_op2 = []
+    probes_correct = []
 
     for layer_idx in range(num_layers):
         probe1 = NumericProbe(hidden_dim)
@@ -258,18 +285,29 @@ def load_probe_results(probes_dir=PROBES_DIR, features_path=FEATURES_PATH, hidde
         probe2 = probe2.to(DEVICE)
         probes_op2.append(probe2)
 
+        probe_correct = NumericProbe(hidden_dim)
+        probe_correct.load_state_dict(torch.load(
+            os.path.join(probes_dir, f'probe_correct_layer{layer_idx}.pt')
+        ))
+        probe_correct = probe_correct.to(DEVICE)
+        probes_correct.append(probe_correct)
+
     metrics = {
         'r2_op1': data['r2_op1'],
         'mae_op1': data['mae_op1'],
         'r2_op2': data['r2_op2'],
-        'mae_op2': data['mae_op2']
+        'mae_op2': data['mae_op2'],
+        'r2_correct': data['r2_correct'],
+        'mae_correct': data['mae_correct']
     }
 
     return {
         'probes_op1': probes_op1,
         'probes_op2': probes_op2,
+        'probes_correct': probes_correct,
         'F1_all': F1_all,
         'F2_all': F2_all,
+        'F_correct_all': F_correct_all,
         'metrics': metrics
     }
 
@@ -286,11 +324,15 @@ if __name__ == "__main__":
 
     h1_all = hidden_states['h1_all']
     h2_all = hidden_states['h2_all']
+    h_output_all = hidden_states['h_output_all']
     x1_values = df['x1'].values
     x2_values = df['x2'].values
+    correct_answers = df['correct_answer'].values
 
     # Train probes
-    probe_results = train_probes_all_layers(h1_all, h2_all, x1_values, x2_values)
+    probe_results = train_probes_all_layers(
+        h1_all, h2_all, h_output_all, x1_values, x2_values, correct_answers
+    )
 
     # Save results
     save_probe_results(probe_results)
