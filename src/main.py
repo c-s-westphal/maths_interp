@@ -180,9 +180,83 @@ def run_full_pipeline(skip_existing=False, model_override=None):
         )
         save_interaction_scores(interaction_df_incorrect, incorrect_path)
 
-    # Step 6: Generate visualizations
+    # Step 6: Compute operation-specific probe metrics
     print("\n" + "="*80)
-    print("STEP 6: Generate Visualizations")
+    print("STEP 6: Compute Operation-Specific Probe Metrics")
+    print("="*80)
+
+    from compute_op_specific_probe_metrics import compute_and_save_op_specific_metrics
+    from config import RESULTS_DIR
+
+    h_output_all = hidden_states['h_output_all']
+    correct_answers = df['correct_answer'].values
+    ops = df['op'].values
+    probes_correct = probe_results['probes_correct']
+
+    compute_and_save_op_specific_metrics(
+        h_output_all, correct_answers, ops, probes_correct, RESULTS_DIR
+    )
+
+    # Step 7: Analyze interaction trajectories
+    print("\n" + "="*80)
+    print("STEP 7: Analyze Interaction Trajectories")
+    print("="*80)
+
+    from analyze_interaction_trajectories import (
+        compute_per_example_interactions,
+        analyze_high_vs_low_interaction,
+        plot_interaction_vs_correctness
+    )
+
+    F1_all = probe_results['F1_all']
+    F2_all = probe_results['F2_all']
+    Z_all = hidden_states['Z_all']
+
+    print("Computing per-example interaction scores...")
+    per_example_df = compute_per_example_interactions(F1_all, F2_all, Z_all, df, None)
+
+    print("\nAnalyzing high vs low interaction (average)...")
+    results_avg = analyze_high_vs_low_interaction(per_example_df, metric='interaction_avg', top_k=100)
+
+    print("\nAnalyzing high vs low interaction (final layer)...")
+    results_final = analyze_high_vs_low_interaction(per_example_df, metric='interaction_final', top_k=100)
+
+    print("\nGenerating interaction trajectory plots...")
+    from config import PLOTS_DIR
+    plot_interaction_vs_correctness(per_example_df, PLOTS_DIR)
+
+    # Save analysis results
+    import pandas as pd
+    results_df = pd.DataFrame([
+        {
+            'op': op,
+            'metric': 'avg',
+            'top_k': stats['top_k'],
+            'top_k_accuracy': stats['top_k_accuracy'],
+            'bottom_k_accuracy': stats['bottom_k_accuracy'],
+            'overall_accuracy': stats['overall_accuracy'],
+            'difference': stats['diff']
+        }
+        for op, stats in results_avg.items()
+    ] + [
+        {
+            'op': op,
+            'metric': 'final',
+            'top_k': stats['top_k'],
+            'top_k_accuracy': stats['top_k_accuracy'],
+            'bottom_k_accuracy': stats['bottom_k_accuracy'],
+            'overall_accuracy': stats['overall_accuracy'],
+            'difference': stats['diff']
+        }
+        for op, stats in results_final.items()
+    ])
+    trajectory_results_path = os.path.join(RESULTS_DIR, 'interaction_trajectory_analysis.csv')
+    results_df.to_csv(trajectory_results_path, index=False)
+    print(f"Trajectory analysis saved to {trajectory_results_path}")
+
+    # Step 8: Generate visualizations
+    print("\n" + "="*80)
+    print("STEP 8: Generate Visualizations")
     print("="*80)
 
     from visualization import generate_all_plots
@@ -197,6 +271,8 @@ def run_full_pipeline(skip_existing=False, model_override=None):
     print(f"  - Hidden states: {HIDDEN_STATES_PATH}")
     print(f"  - Probe features: {FEATURES_PATH}")
     print(f"  - Interaction scores: {INTERACTION_SCORES_PATH}")
+    print(f"  - Op-specific probe metrics: {os.path.join(RESULTS_DIR, 'probe_metrics_by_operation.csv')}")
+    print(f"  - Trajectory analysis: {trajectory_results_path}")
     from config import PLOTS_DIR
     print(f"  - Plots: {PLOTS_DIR}/")
     print("\nSee README.md for details on interpreting results.")
