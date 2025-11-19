@@ -204,8 +204,7 @@ def run_full_pipeline(skip_existing=False, model_override=None):
 
     from analyze_interaction_trajectories import (
         compute_per_example_interactions,
-        analyze_high_vs_low_interaction,
-        plot_interaction_vs_correctness
+        analyze_high_vs_low_interaction
     )
 
     F1_all = probe_results['F1_all']
@@ -220,10 +219,6 @@ def run_full_pipeline(skip_existing=False, model_override=None):
 
     print("\nAnalyzing high vs low interaction (final layer)...")
     results_final = analyze_high_vs_low_interaction(per_example_df, metric='interaction_final', top_k=100)
-
-    print("\nGenerating interaction trajectory plots...")
-    from config import PLOTS_DIR
-    plot_interaction_vs_correctness(per_example_df, PLOTS_DIR)
 
     # Save analysis results
     import pandas as pd

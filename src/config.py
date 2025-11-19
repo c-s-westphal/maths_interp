@@ -45,30 +45,31 @@ def set_seed(seed=RANDOM_SEED):
 MODEL_NAME = "microsoft/phi-2"  # Excellent math performance, 2.7B params
 
 # Dataset configuration
-OPERATIONS = ["add", "sub", "mul", "max", "min"]
+OPERATIONS = ["add", "sub", "mul", "div", "max", "min"]
 DIFFICULTY_LEVELS = ["easy", "medium", "hard"]  # Use all difficulty levels
 
 # Number of examples per (operation, difficulty) pair
 # For larger dataset suitable for bigger models:
-# 5 ops × 3 difficulties × 1000 = 15,000 examples
+# 6 ops × 3 difficulties × 1000 = 18,000 examples
 EXAMPLES_PER_OP_DIFFICULTY = 1000
 
-# Difficulty ranges (inclusive)
+# Difficulty ranges (inclusive) - increased difficulty
 DIFFICULTY_RANGES = {
-    "easy": (1, 99),       # 1-2 digits
-    "medium": (100, 999),  # 3 digits
-    "hard": (1000, 9999)   # 4 digits
+    "easy": (10, 99),         # 2 digits
+    "medium": (100, 9999),    # 3-4 digits
+    "hard": (1000, 99999)     # 4-5 digits
 }
 
 # Prompt format options
 USE_FEW_SHOT = True  # Add few-shot examples to help the model
 # Updated few-shot examples with diverse difficulty levels
 FEW_SHOT_EXAMPLES = {
-    "add": "2 + 3 = 5\n47 + 28 = 75\n234 + 567 = 801\n",
-    "sub": "8 - 3 = 5\n95 - 42 = 53\n876 - 234 = 642\n",
-    "mul": "2 * 3 = 6\n12 * 8 = 96\n45 * 23 = 1035\n",
-    "max": "max(2, 5) = 5\nmax(73, 28) = 73\nmax(456, 789) = 789\n",
-    "min": "min(2, 5) = 2\nmin(73, 28) = 28\nmin(456, 789) = 456\n"
+    "add": "12 + 34 = 46\n456 + 789 = 1245\n1234 + 5678 = 6912\n",
+    "sub": "98 - 45 = 53\n876 - 234 = 642\n5678 - 1234 = 4444\n",
+    "mul": "12 * 8 = 96\n45 * 23 = 1035\n123 * 45 = 5535\n",
+    "div": "96 / 8 = 12\n1035 / 23 = 45\n5535 / 45 = 123\n",
+    "max": "max(73, 28) = 73\nmax(456, 789) = 789\nmax(1234, 5678) = 5678\n",
+    "min": "min(73, 28) = 28\nmin(456, 789) = 456\nmin(1234, 5678) = 1234\n"
 }
 
 # Probe configuration

@@ -20,6 +20,8 @@ def compute_answer(x1: int, x2: int, op: str) -> int:
         return x1 - x2
     elif op == "mul":
         return x1 * x2
+    elif op == "div":
+        return x1 // x2  # Integer division
     elif op == "max":
         return max(x1, x2)
     elif op == "min":
@@ -37,6 +39,8 @@ def format_prompt(x1: int, x2: int, op: str) -> str:
         query = f"{x1} - {x2} ="
     elif op == "mul":
         query = f"{x1} * {x2} ="
+    elif op == "div":
+        query = f"{x1} / {x2} ="
     elif op == "max":
         query = f"max({x1}, {x2}) ="
     elif op == "min":
@@ -63,6 +67,13 @@ def generate_example(op: str, difficulty: str) -> Dict:
     # For subtraction, ensure x1 >= x2 to avoid negative results
     if op == "sub" and x1 < x2:
         x1, x2 = x2, x1
+
+    # For division, ensure x1 is divisible by x2 for integer results
+    if op == "div":
+        # Generate quotient and divisor, then compute x1 = quotient * x2
+        quotient = random.randint(max(2, min_val // max_val), max_val // max(2, min_val))
+        x2 = random.randint(max(2, min_val), min(max_val, max_val // 2))
+        x1 = quotient * x2
 
     # Compute correct answer
     correct_answer = compute_answer(x1, x2, op)
