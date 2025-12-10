@@ -134,7 +134,7 @@ def run_full_pipeline(skip_existing=False, model_override=None):
     from mi_synergy_analysis import (
         compute_all_mi_synergy, save_mi_synergy_results
     )
-    from config import RESULTS_DIR, MI_KSG_NEIGHBORS, MI_PCA_COMPONENTS
+    from config import RESULTS_DIR, MI_KSG_NEIGHBORS, MI_PCA_COMPONENTS, MI_NEXT_LAYER_PCA_COMPONENTS
 
     mi_synergy_path = os.path.join(RESULTS_DIR, 'mi_synergy_scalar_probe.csv')
     if skip_existing and os.path.exists(mi_synergy_path):
@@ -146,6 +146,7 @@ def run_full_pipeline(skip_existing=False, model_override=None):
         print(f"  - All features extracted from '=' position")
         print(f"  - Scalar probe outputs (1D)")
         print(f"  - PCA reduced features: {MI_PCA_COMPONENTS}")
+        print(f"  - Next-layer target: PCA-{MI_NEXT_LAYER_PCA_COMPONENTS}")
         print(f"  - KSG neighbors (k): {MI_KSG_NEIGHBORS}")
 
         mi_results = compute_all_mi_synergy(
@@ -159,6 +160,7 @@ def run_full_pipeline(skip_existing=False, model_override=None):
             model=None,  # Skip log-prob method (requires re-inference)
             tokenizer=None,
             pca_components=MI_PCA_COMPONENTS,
+            next_layer_pca_components=MI_NEXT_LAYER_PCA_COMPONENTS,
             k=MI_KSG_NEIGHBORS
         )
         save_mi_synergy_results(mi_results)

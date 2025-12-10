@@ -82,6 +82,7 @@ PROBE_VALIDATION_SPLIT = 0.2
 # MI Synergy configuration
 MI_KSG_NEIGHBORS = 3  # k for KSG estimator
 MI_PCA_COMPONENTS = [3, 5]  # PCA dimensions to try
+MI_NEXT_LAYER_PCA_COMPONENTS = 20  # PCA dimensions for next-layer target
 
 # Paths - Use absolute paths relative to project root
 # Get the project root directory (parent of src/)

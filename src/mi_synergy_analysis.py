@@ -539,6 +539,76 @@ def compute_synergy_raw_operands(x1_all, x2_all, Z_all, df, k=3):
     return pd.DataFrame(results)
 
 
+def compute_synergy_next_layer(probes_op1, probes_op2, h_output_all, df, n_components=20, k=3):
+    """
+    Compute MI-based synergy where target Z is the PCA-reduced next layer representation.
+
+    This measures: do operand features at layer L need to be combined to predict
+    what layer L+1 computes? Detects where "mixing" happens in the forward pass.
+
+    Synergy(L) = I(F1_L, F2_L; h_{L+1}) - I(F1_L; h_{L+1}) - I(F2_L; h_{L+1})
+
+    Args:
+        probes_op1: List of probes for operand 1 (one per layer)
+        probes_op2: List of probes for operand 2 (one per layer)
+        h_output_all: [n_samples, n_layers, hidden_dim] - hidden states at "=" position
+        df: DataFrame with metadata
+        n_components: PCA dimensionality for next layer target (default: 20)
+        k: KSG neighbors
+
+    Returns:
+        DataFrame with synergy scores per layer and operation
+    """
+    n_samples, n_layers, hidden_dim = h_output_all.shape
+    results = []
+
+    print(f"Computing next-layer synergy (target: PCA-{n_components} of h_{{L+1}})...")
+
+    # Apply PCA to each layer's hidden states (we'll use these as targets)
+    print("  Fitting PCA for each layer...")
+    h_pca_all = np.zeros((n_samples, n_layers, n_components), dtype=np.float32)
+    for layer_idx in tqdm(range(n_layers), desc="  PCA fitting"):
+        pca = PCA(n_components=n_components)
+        h_pca_all[:, layer_idx, :] = pca.fit_transform(h_output_all[:, layer_idx, :])
+
+    for op in tqdm(OPERATIONS, desc="Operations"):
+        op_mask = df['op'] == op
+        op_indices = np.where(op_mask)[0]
+
+        if len(op_indices) < 100:
+            print(f"Skipping {op} (only {len(op_indices)} examples)")
+            continue
+
+        # For layers 0 to n_layers-2, predict layer L+1 from layer L features
+        for layer_idx in range(n_layers - 1):
+            # Get hidden states at "=" position for this layer
+            h_output_layer = h_output_all[op_indices, layer_idx, :]
+
+            # Apply both probes to get scalar features at layer L
+            x1_hat = get_scalar_probe_outputs(probes_op1[layer_idx], h_output_layer)
+            x2_hat = get_scalar_probe_outputs(probes_op2[layer_idx], h_output_layer)
+
+            # Target: PCA-reduced representation at layer L+1
+            z_next = h_pca_all[op_indices, layer_idx + 1, :]
+
+            # Compute synergy
+            synergy, components = compute_synergy_mi(x1_hat, x2_hat, z_next, k=k)
+
+            results.append({
+                'layer': layer_idx,
+                'target_layer': layer_idx + 1,
+                'op': op,
+                'synergy': synergy,
+                'I_F12_Z': components['I_F12_Z'],
+                'I_F1_Z': components['I_F1_Z'],
+                'I_F2_Z': components['I_F2_Z'],
+                'method': f'next_layer_pca_{n_components}',
+                'n_samples': len(op_indices)
+            })
+
+    return pd.DataFrame(results)
+
+
 # =============================================================================
 # Orchestration
 # =============================================================================
@@ -550,6 +620,7 @@ def compute_all_mi_synergy(
     Z_all, df,
     model=None, tokenizer=None,
     pca_components=[3, 5],
+    next_layer_pca_components=20,
     k=3
 ):
     """
@@ -566,6 +637,7 @@ def compute_all_mi_synergy(
         df: DataFrame with metadata
         model, tokenizer: For log-prob method (optional)
         pca_components: List of PCA dimensions to try
+        next_layer_pca_components: PCA dimensions for next-layer target (default: 20)
         k: KSG neighbors
 
     Returns:
@@ -595,6 +667,12 @@ def compute_all_mi_synergy(
         results['log_prob'] = compute_synergy_log_probs(
             model, tokenizer, df, Z_all, k=k
         )
+
+    # Method 5: Next-layer synergy (predicting layer L+1 from layer L features)
+    results[f'next_layer_pca_{next_layer_pca_components}'] = compute_synergy_next_layer(
+        probes_op1, probes_op2, h_output_all, df,
+        n_components=next_layer_pca_components, k=k
+    )
 
     return results
 

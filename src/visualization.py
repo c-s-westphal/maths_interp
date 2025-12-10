@@ -433,6 +433,85 @@ def plot_baseline_comparison(baseline_df, save_path=None):
     plt.close()
 
 
+def plot_next_layer_synergy(synergy_df, save_path=None, title="Next-Layer Synergy"):
+    """
+    Plot next-layer synergy: how much do operand features at layer L
+    need to be combined to predict the representation at layer L+1?
+
+    This shows where "mixing" happens in the forward pass.
+
+    Args:
+        synergy_df: DataFrame with columns [layer, op, synergy, target_layer]
+        save_path: Path to save figure
+        title: Plot title
+    """
+    plt.figure(figsize=(12, 7))
+
+    colors = plt.cm.Set1(np.linspace(0, 1, len(OPERATIONS)))
+
+    for op, color in zip(OPERATIONS, colors):
+        op_data = synergy_df[synergy_df['op'] == op]
+        if len(op_data) > 0:
+            plt.plot(op_data['layer'], op_data['synergy'],
+                    marker='o', label=op, linewidth=2, color=color, markersize=5)
+
+    plt.xlabel('Source Layer (L)', fontsize=12)
+    plt.ylabel('MI Synergy to Layer L+1 (nats)', fontsize=12)
+    plt.title(title, fontsize=14)
+    plt.axhline(y=0, color='gray', linestyle='--', alpha=0.5, linewidth=1)
+    plt.legend(fontsize=10, loc='best')
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        print(f"Plot saved to {save_path}")
+    else:
+        plt.show()
+
+    plt.close()
+
+
+def plot_next_layer_synergy_heatmap(synergy_df, save_path=None, title="Next-Layer Synergy Heatmap"):
+    """
+    Plot heatmap of next-layer synergy: operations vs source layers.
+
+    Args:
+        synergy_df: DataFrame with columns [layer, op, synergy]
+        save_path: Path to save figure
+        title: Plot title
+    """
+    # Pivot data
+    pivot_data = synergy_df.pivot(index='op', columns='layer', values='synergy')
+
+    plt.figure(figsize=(16, 6))
+
+    # Use diverging colormap centered at 0
+    vmax = max(abs(pivot_data.values.min()), abs(pivot_data.values.max()))
+    im = plt.imshow(pivot_data.values, aspect='auto', cmap='RdBu_r',
+                    vmin=-vmax, vmax=vmax, interpolation='nearest')
+
+    plt.xticks(range(len(pivot_data.columns)), pivot_data.columns)
+    plt.yticks(range(len(pivot_data.index)), pivot_data.index)
+
+    plt.xlabel('Source Layer (L) → Target Layer (L+1)', fontsize=12)
+    plt.ylabel('Operation', fontsize=12)
+    plt.title(title, fontsize=14)
+
+    cbar = plt.colorbar(im, shrink=0.8)
+    cbar.set_label('MI Synergy (nats)', fontsize=12)
+
+    plt.tight_layout()
+
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        print(f"Plot saved to {save_path}")
+    else:
+        plt.show()
+
+    plt.close()
+
+
 def generate_all_plots(mi_results=None):
     """
     Generate all visualization plots.
@@ -536,6 +615,27 @@ def generate_all_plots(mi_results=None):
         plot_baseline_comparison(
             mi_results['raw_baseline'],
             save_path=os.path.join(PLOTS_DIR, 'synergy_baseline.png')
+        )
+
+    # === NEXT-LAYER SYNERGY ===
+    # Find next-layer synergy results (key starts with 'next_layer_pca_')
+    next_layer_keys = [k for k in mi_results.keys() if k.startswith('next_layer_pca_')]
+    for key in next_layer_keys:
+        next_layer_df = mi_results[key]
+        n_comp = key.split('_')[-1]
+
+        # 1. Synergy by layer
+        plot_next_layer_synergy(
+            next_layer_df,
+            save_path=os.path.join(PLOTS_DIR, f'synergy_{key}.png'),
+            title=f'Next-Layer Synergy: I(x̂₁, x̂₂; h_{{L+1}}) (PCA-{n_comp} target)'
+        )
+
+        # 2. Heatmap
+        plot_next_layer_synergy_heatmap(
+            next_layer_df,
+            save_path=os.path.join(PLOTS_DIR, f'synergy_heatmap_{key}.png'),
+            title=f'Next-Layer Synergy Heatmap (PCA-{n_comp} target)'
         )
 
     # === PROBE QUALITY ===
