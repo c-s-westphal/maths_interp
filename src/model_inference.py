@@ -156,12 +156,57 @@ def decode_model_answer(model, tokenizer, input_ids, max_new_tokens=10, debug=Fa
 
 def decode_model_answers_batch(model, tokenizer, input_ids_list, max_new_tokens=10):
     """
-    Decode model answers for a batch (still done one at a time for generation).
+    Decode model answers for a batch using batched generation.
     """
+    import re
+
+    batch_size = len(input_ids_list)
+    if batch_size == 0:
+        return []
+
+    # Pad sequences for batched generation (left-padding for causal LM)
+    max_len = max(len(ids) for ids in input_ids_list)
+    pad_token_id = tokenizer.pad_token_id
+
+    padded_input_ids = []
+    attention_mask = []
+
+    for ids in input_ids_list:
+        padding_len = max_len - len(ids)
+        padded_ids = [pad_token_id] * padding_len + list(ids)
+        mask = [0] * padding_len + [1] * len(ids)
+        padded_input_ids.append(padded_ids)
+        attention_mask.append(mask)
+
+    input_tensor = torch.tensor(padded_input_ids, device=DEVICE)
+    attention_tensor = torch.tensor(attention_mask, device=DEVICE)
+
+    with torch.no_grad():
+        output_ids = model.generate(
+            input_tensor,
+            attention_mask=attention_tensor,
+            max_new_tokens=max_new_tokens,
+            do_sample=False,
+            pad_token_id=pad_token_id
+        )
+
+    # Decode each sequence
     answers = []
-    for input_ids in input_ids_list:
-        answer = decode_model_answer(model, tokenizer, input_ids, max_new_tokens, debug=False)
-        answers.append(answer)
+    for i in range(batch_size):
+        # Get generated tokens (after the padded input)
+        generated_tokens = output_ids[i, max_len:]
+        generated_text = tokenizer.decode(generated_tokens, skip_special_tokens=True)
+
+        # Extract integer from generated text
+        match = re.search(r'-?\d+', generated_text.strip())
+        if match:
+            try:
+                answers.append(int(match.group()))
+            except ValueError:
+                answers.append(None)
+        else:
+            answers.append(None)
+
     return answers
 
 
