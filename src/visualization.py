@@ -200,8 +200,8 @@ def plot_probe_quality(metrics, save_path=None):
     layers = np.arange(len(metrics['r2_op1']))
 
     # R² scores
-    ax1.plot(layers, metrics['r2_op1'], marker='o', label='Operand 1 (x̂₁)', linewidth=2)
-    ax1.plot(layers, metrics['r2_op2'], marker='s', label='Operand 2 (x̂₂)', linewidth=2)
+    ax1.plot(layers, metrics['r2_op1'], marker='o', label='Operand 1 from "=" (x̂₁)', linewidth=2)
+    ax1.plot(layers, metrics['r2_op2'], marker='s', label='Operand 2 from "=" (x̂₂)', linewidth=2)
     ax1.plot(layers, metrics['r2_correct'], marker='^', label='Correct Answer (ŷ)', linewidth=2)
     ax1.set_xlabel('Layer Index', fontsize=12)
     ax1.set_ylabel('R² Score', fontsize=12)
@@ -211,8 +211,8 @@ def plot_probe_quality(metrics, save_path=None):
     ax1.set_ylim(-0.1, 1.1)
 
     # MAE scores
-    ax2.plot(layers, metrics['mae_op1'], marker='o', label='Operand 1 (x̂₁)', linewidth=2)
-    ax2.plot(layers, metrics['mae_op2'], marker='s', label='Operand 2 (x̂₂)', linewidth=2)
+    ax2.plot(layers, metrics['mae_op1'], marker='o', label='Operand 1 from "=" (x̂₁)', linewidth=2)
+    ax2.plot(layers, metrics['mae_op2'], marker='s', label='Operand 2 from "=" (x̂₂)', linewidth=2)
     ax2.plot(layers, metrics['mae_correct'], marker='^', label='Correct Answer (ŷ)', linewidth=2)
     ax2.set_xlabel('Layer Index', fontsize=12)
     ax2.set_ylabel('Mean Absolute Error', fontsize=12)

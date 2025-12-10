@@ -1,5 +1,13 @@
 """
 Train numeric-decoding probes for each layer.
+
+All probes are trained on the hidden state at the "=" position (h_output),
+where the model has gathered information about both operands via attention.
+
+Probes:
+- probe_op1: h_output → x̂₁ (decode operand 1 from "=" position)
+- probe_op2: h_output → x̂₂ (decode operand 2 from "=" position)
+- probe_correct: h_output → ŷ (decode correct answer from "=" position)
 """
 import torch
 import torch.nn as nn
@@ -128,29 +136,48 @@ def extract_features_from_probe(probe, X):
         return features.cpu().numpy()
 
 
-def train_probes_all_layers(h1_all, h2_all, h_output_all, x1_values, x2_values, correct_answers):
+def get_scalar_predictions(probe, X):
+    """
+    Get scalar predictions from a probe.
+
+    Args:
+        probe: Trained NumericProbe
+        X: Input hidden states [num_examples, hidden_dim]
+
+    Returns:
+        predictions: [num_examples] scalar predictions
+    """
+    probe.eval()
+    with torch.no_grad():
+        X_t = torch.FloatTensor(X).to(DEVICE)
+        predictions, _ = probe(X_t)
+        return predictions.cpu().numpy().flatten()
+
+
+def train_probes_all_layers(h_output_all, x1_values, x2_values, correct_answers):
     """
     Train numeric probes for all layers.
 
+    ALL probes are trained on h_output (the "=" position), where the model
+    has gathered information about both operands via attention.
+
     Args:
-        h1_all: [num_examples, num_layers, hidden_dim]
-        h2_all: [num_examples, num_layers, hidden_dim]
-        h_output_all: [num_examples, num_layers, hidden_dim]
-        x1_values: [num_examples]
-        x2_values: [num_examples]
-        correct_answers: [num_examples]
+        h_output_all: [num_examples, num_layers, hidden_dim] - hidden states at "=" position
+        x1_values: [num_examples] - ground truth operand 1
+        x2_values: [num_examples] - ground truth operand 2
+        correct_answers: [num_examples] - ground truth answers
 
     Returns:
         Dictionary with:
-            - probes_op1: List of probes for operand 1
-            - probes_op2: List of probes for operand 2
-            - probes_correct: List of probes for correct answer
+            - probes_op1: List of probes for operand 1 (from "=" position)
+            - probes_op2: List of probes for operand 2 (from "=" position)
+            - probes_correct: List of probes for correct answer (from "=" position)
             - F1_all: [num_examples, num_layers, probe_hidden_dim]
             - F2_all: [num_examples, num_layers, probe_hidden_dim]
             - F_correct_all: [num_examples, num_layers, probe_hidden_dim]
             - metrics: Dictionary of R² and MAE per layer
     """
-    num_examples, num_layers, hidden_dim = h1_all.shape
+    num_examples, num_layers, hidden_dim = h_output_all.shape
 
     probes_op1 = []
     probes_op2 = []
@@ -169,11 +196,10 @@ def train_probes_all_layers(h1_all, h2_all, h_output_all, x1_values, x2_values, 
     }
 
     print(f"Training probes for {num_layers} layers...")
+    print(f"All probes trained on h_output ('=' position)")
 
     for layer_idx in tqdm(range(num_layers), desc="Training probes"):
-        # Extract hidden states for this layer
-        h1_layer = h1_all[:, layer_idx, :]
-        h2_layer = h2_all[:, layer_idx, :]
+        # Extract hidden states at "=" position for this layer
         h_output_layer = h_output_all[:, layer_idx, :]
 
         # Split data
@@ -182,27 +208,27 @@ def train_probes_all_layers(h1_all, h2_all, h_output_all, x1_values, x2_values, 
             indices, test_size=PROBE_VALIDATION_SPLIT, random_state=42
         )
 
-        # Train probe for operand 1
+        # Train probe for operand 1 (from "=" position)
         probe1, r2_1, mae_1 = train_probe(
-            h1_layer[train_idx], x1_values[train_idx],
-            h1_layer[val_idx], x1_values[val_idx],
+            h_output_layer[train_idx], x1_values[train_idx],
+            h_output_layer[val_idx], x1_values[val_idx],
             hidden_dim
         )
         probes_op1.append(probe1)
         metrics['r2_op1'].append(r2_1)
         metrics['mae_op1'].append(mae_1)
 
-        # Train probe for operand 2
+        # Train probe for operand 2 (from "=" position)
         probe2, r2_2, mae_2 = train_probe(
-            h2_layer[train_idx], x2_values[train_idx],
-            h2_layer[val_idx], x2_values[val_idx],
+            h_output_layer[train_idx], x2_values[train_idx],
+            h_output_layer[val_idx], x2_values[val_idx],
             hidden_dim
         )
         probes_op2.append(probe2)
         metrics['r2_op2'].append(r2_2)
         metrics['mae_op2'].append(mae_2)
 
-        # Train probe for correct answer
+        # Train probe for correct answer (from "=" position)
         probe_correct, r2_correct, mae_correct = train_probe(
             h_output_layer[train_idx], correct_answers[train_idx],
             h_output_layer[val_idx], correct_answers[val_idx],
@@ -213,13 +239,13 @@ def train_probes_all_layers(h1_all, h2_all, h_output_all, x1_values, x2_values, 
         metrics['mae_correct'].append(mae_correct)
 
         # Extract features for all examples
-        F1_all[:, layer_idx, :] = extract_features_from_probe(probe1, h1_layer)
-        F2_all[:, layer_idx, :] = extract_features_from_probe(probe2, h2_layer)
+        F1_all[:, layer_idx, :] = extract_features_from_probe(probe1, h_output_layer)
+        F2_all[:, layer_idx, :] = extract_features_from_probe(probe2, h_output_layer)
         F_correct_all[:, layer_idx, :] = extract_features_from_probe(probe_correct, h_output_layer)
 
     print("\nProbe training complete!")
-    print(f"Average R² (op1): {np.mean(metrics['r2_op1']):.3f}")
-    print(f"Average R² (op2): {np.mean(metrics['r2_op2']):.3f}")
+    print(f"Average R² (op1 from '='): {np.mean(metrics['r2_op1']):.3f}")
+    print(f"Average R² (op2 from '='): {np.mean(metrics['r2_op2']):.3f}")
     print(f"Average R² (correct answer): {np.mean(metrics['r2_correct']):.3f}")
 
     return {
@@ -322,16 +348,14 @@ if __name__ == "__main__":
     df = load_dataset()
     hidden_states = load_hidden_states()
 
-    h1_all = hidden_states['h1_all']
-    h2_all = hidden_states['h2_all']
     h_output_all = hidden_states['h_output_all']
     x1_values = df['x1'].values
     x2_values = df['x2'].values
     correct_answers = df['correct_answer'].values
 
-    # Train probes
+    # Train probes (all from "=" position)
     probe_results = train_probes_all_layers(
-        h1_all, h2_all, h_output_all, x1_values, x2_values, correct_answers
+        h_output_all, x1_values, x2_values, correct_answers
     )
 
     # Save results

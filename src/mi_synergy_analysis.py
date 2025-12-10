@@ -308,18 +308,20 @@ def apply_pca_to_features(F_all, n_components=3):
 # Main Synergy Computation Functions
 # =============================================================================
 
-def compute_synergy_scalar_probes(probes_op1, probes_op2, h1_all, h2_all, Z_all, df, k=3):
+def compute_synergy_scalar_probes(probes_op1, probes_op2, h_output_all, Z_all, df, k=3):
     """
     Compute MI-based synergy using scalar probe outputs.
 
-    F1 = x̂₁ (scalar prediction of operand 1)
-    F2 = x̂₂ (scalar prediction of operand 2)
+    Both probes are applied to h_output (the "=" position), where the model
+    has gathered information about both operands via attention.
+
+    F1 = x̂₁ (scalar prediction of operand 1 from "=" position)
+    F2 = x̂₂ (scalar prediction of operand 2 from "=" position)
 
     Args:
         probes_op1: List of probes for operand 1 (one per layer)
         probes_op2: List of probes for operand 2 (one per layer)
-        h1_all: [n_samples, n_layers, hidden_dim]
-        h2_all: [n_samples, n_layers, hidden_dim]
+        h_output_all: [n_samples, n_layers, hidden_dim] - hidden states at "=" position
         Z_all: [n_samples] target values
         df: DataFrame with metadata
         k: KSG neighbors
@@ -327,10 +329,10 @@ def compute_synergy_scalar_probes(probes_op1, probes_op2, h1_all, h2_all, Z_all,
     Returns:
         DataFrame with synergy scores per layer and operation
     """
-    n_samples, n_layers, _ = h1_all.shape
+    n_samples, n_layers, _ = h_output_all.shape
     results = []
 
-    print("Computing MI synergy using scalar probe outputs...")
+    print("Computing MI synergy using scalar probe outputs (from '=' position)...")
 
     for op in tqdm(OPERATIONS, desc="Operations"):
         op_mask = df['op'] == op
@@ -343,12 +345,12 @@ def compute_synergy_scalar_probes(probes_op1, probes_op2, h1_all, h2_all, Z_all,
         Z_op = Z_all[op_indices]
 
         for layer_idx in range(n_layers):
-            # Get scalar probe outputs for this layer
-            h1_layer = h1_all[op_indices, layer_idx, :]
-            h2_layer = h2_all[op_indices, layer_idx, :]
+            # Get hidden states at "=" position for this layer
+            h_output_layer = h_output_all[op_indices, layer_idx, :]
 
-            x1_hat = get_scalar_probe_outputs(probes_op1[layer_idx], h1_layer)
-            x2_hat = get_scalar_probe_outputs(probes_op2[layer_idx], h2_layer)
+            # Apply both probes to the same hidden state (from "=" position)
+            x1_hat = get_scalar_probe_outputs(probes_op1[layer_idx], h_output_layer)
+            x2_hat = get_scalar_probe_outputs(probes_op2[layer_idx], h_output_layer)
 
             # Compute synergy
             synergy, components = compute_synergy_mi(x1_hat, x2_hat, Z_op, k=k)
@@ -543,7 +545,7 @@ def compute_synergy_raw_operands(x1_all, x2_all, Z_all, df, k=3):
 
 def compute_all_mi_synergy(
     probes_op1, probes_op2,
-    h1_all, h2_all,
+    h_output_all,
     F1_all, F2_all,
     Z_all, df,
     model=None, tokenizer=None,
@@ -553,9 +555,12 @@ def compute_all_mi_synergy(
     """
     Compute MI-based synergy using all methods.
 
+    All features are extracted from the "=" position (h_output), where the model
+    has gathered information about both operands via attention.
+
     Args:
-        probes_op1, probes_op2: Lists of trained probes
-        h1_all, h2_all: Hidden states [n_samples, n_layers, hidden_dim]
+        probes_op1, probes_op2: Lists of trained probes (applied to h_output)
+        h_output_all: Hidden states at "=" position [n_samples, n_layers, hidden_dim]
         F1_all, F2_all: Probe features [n_samples, n_layers, feature_dim]
         Z_all: Target values [n_samples]
         df: DataFrame with metadata
@@ -568,9 +573,9 @@ def compute_all_mi_synergy(
     """
     results = {}
 
-    # Method 1: Scalar probe outputs
+    # Method 1: Scalar probe outputs (both from "=" position)
     results['scalar_probe'] = compute_synergy_scalar_probes(
-        probes_op1, probes_op2, h1_all, h2_all, Z_all, df, k=k
+        probes_op1, probes_op2, h_output_all, Z_all, df, k=k
     )
 
     # Method 2: PCA-reduced features

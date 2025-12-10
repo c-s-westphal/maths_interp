@@ -111,19 +111,18 @@ def run_full_pipeline(skip_existing=False, model_override=None):
     if skip_existing and os.path.exists(FEATURES_PATH):
         print(f"Probe features already exist at {FEATURES_PATH}, skipping training...")
         from probe_training import load_probe_results
-        probe_results = load_probe_results(hidden_dim=hidden_states['h1_all'].shape[2])
+        probe_results = load_probe_results(hidden_dim=hidden_states['h_output_all'].shape[2])
     else:
         from probe_training import train_probes_all_layers, save_probe_results
 
-        h1_all = hidden_states['h1_all']
-        h2_all = hidden_states['h2_all']
+        # All probes are trained on h_output (the "=" position)
         h_output_all = hidden_states['h_output_all']
         x1_values = df['x1'].values
         x2_values = df['x2'].values
         correct_answers = df['correct_answer'].values
 
         probe_results = train_probes_all_layers(
-            h1_all, h2_all, h_output_all, x1_values, x2_values, correct_answers
+            h_output_all, x1_values, x2_values, correct_answers
         )
         save_probe_results(probe_results)
 
@@ -144,6 +143,7 @@ def run_full_pipeline(skip_existing=False, model_override=None):
         mi_results = load_mi_synergy_results()
     else:
         print("Computing MI-based synergy using low-dimensional representations...")
+        print(f"  - All features extracted from '=' position")
         print(f"  - Scalar probe outputs (1D)")
         print(f"  - PCA reduced features: {MI_PCA_COMPONENTS}")
         print(f"  - KSG neighbors (k): {MI_KSG_NEIGHBORS}")
@@ -151,8 +151,7 @@ def run_full_pipeline(skip_existing=False, model_override=None):
         mi_results = compute_all_mi_synergy(
             probes_op1=probe_results['probes_op1'],
             probes_op2=probe_results['probes_op2'],
-            h1_all=hidden_states['h1_all'],
-            h2_all=hidden_states['h2_all'],
+            h_output_all=hidden_states['h_output_all'],
             F1_all=probe_results['F1_all'],
             F2_all=probe_results['F2_all'],
             Z_all=hidden_states['Z_all'],
