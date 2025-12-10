@@ -46,30 +46,30 @@ MODEL_NAME = "microsoft/phi-2"  # Excellent math performance, 2.7B params
 
 # Dataset configuration
 OPERATIONS = ["add", "sub", "mul", "div", "max", "min"]
-DIFFICULTY_LEVELS = ["easy", "medium", "hard"]  # Use all difficulty levels
+DIFFICULTY_LEVELS = ["easy", "medium", "hard", "very_hard"]  # Added very_hard
 
 # Number of examples per (operation, difficulty) pair
-# For larger dataset suitable for bigger models:
-# 6 ops × 3 difficulties × 1000 = 18,000 examples
-EXAMPLES_PER_OP_DIFFICULTY = 1000
+# For larger dataset: 6 ops × 4 difficulties × 1500 = 36,000 examples
+EXAMPLES_PER_OP_DIFFICULTY = 1500
 
-# Difficulty ranges (inclusive) - increased difficulty
+# Difficulty ranges (inclusive) - expanded with harder examples
 DIFFICULTY_RANGES = {
-    "easy": (10, 99),         # 2 digits
-    "medium": (100, 9999),    # 3-4 digits
-    "hard": (1000, 99999)     # 4-5 digits
+    "easy": (10, 99),              # 2 digits
+    "medium": (100, 9999),         # 3-4 digits
+    "hard": (10000, 99999),        # 5 digits
+    "very_hard": (100000, 999999)  # 6 digits
 }
 
 # Prompt format options
 USE_FEW_SHOT = True  # Add few-shot examples to help the model
-# Updated few-shot examples with diverse difficulty levels
+# Updated few-shot examples with diverse difficulty levels (including harder examples)
 FEW_SHOT_EXAMPLES = {
-    "add": "12 + 34 = 46\n456 + 789 = 1245\n1234 + 5678 = 6912\n",
-    "sub": "98 - 45 = 53\n876 - 234 = 642\n5678 - 1234 = 4444\n",
-    "mul": "12 * 8 = 96\n45 * 23 = 1035\n123 * 45 = 5535\n",
-    "div": "96 / 8 = 12\n1035 / 23 = 45\n5535 / 45 = 123\n",
-    "max": "max(73, 28) = 73\nmax(456, 789) = 789\nmax(1234, 5678) = 5678\n",
-    "min": "min(73, 28) = 28\nmin(456, 789) = 456\nmin(1234, 5678) = 1234\n"
+    "add": "12 + 34 = 46\n456 + 789 = 1245\n12345 + 67890 = 80235\n",
+    "sub": "98 - 45 = 53\n8765 - 1234 = 7531\n67890 - 12345 = 55545\n",
+    "mul": "12 * 8 = 96\n45 * 23 = 1035\n123 * 456 = 56088\n",
+    "div": "96 / 8 = 12\n1035 / 23 = 45\n56088 / 456 = 123\n",
+    "max": "max(73, 28) = 73\nmax(4567, 7890) = 7890\nmax(123456, 567890) = 567890\n",
+    "min": "min(73, 28) = 28\nmin(4567, 7890) = 4567\nmin(123456, 567890) = 123456\n"
 }
 
 # Probe configuration
@@ -79,11 +79,9 @@ PROBE_EPOCHS = 50
 PROBE_BATCH_SIZE = 128
 PROBE_VALIDATION_SPLIT = 0.2
 
-# Interaction predictor configuration
-INTERACTION_PREDICTOR_HIDDEN_DIM = 128
-INTERACTION_LEARNING_RATE = 0.001
-INTERACTION_EPOCHS = 30
-INTERACTION_BATCH_SIZE = 128
+# MI Synergy configuration
+MI_KSG_NEIGHBORS = 3  # k for KSG estimator
+MI_PCA_COMPONENTS = [3, 5]  # PCA dimensions to try
 
 # Paths - Use absolute paths relative to project root
 # Get the project root directory (parent of src/)
@@ -98,7 +96,7 @@ DATASET_PATH = os.path.join(DATA_DIR, "arithmetic_dataset.pkl")
 HIDDEN_STATES_PATH = os.path.join(RESULTS_DIR, "hidden_states.npz")
 FEATURES_PATH = os.path.join(RESULTS_DIR, "features.npz")
 PROBES_DIR = os.path.join(RESULTS_DIR, "probes")
-INTERACTION_SCORES_PATH = os.path.join(RESULTS_DIR, "interaction_scores.csv")
+MI_SYNERGY_PATH = os.path.join(RESULTS_DIR, "mi_synergy_scalar_probe.csv")
 
 # Create directories if they don't exist
 for directory in [DATA_DIR, RESULTS_DIR, PLOTS_DIR, PROBES_DIR]:

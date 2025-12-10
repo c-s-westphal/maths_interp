@@ -6,7 +6,7 @@ This script orchestrates the entire experiment:
 2. Tokenize and find operand positions
 3. Run model inference and extract hidden states
 4. Train numeric-decoding probes
-5. Compute interaction scores
+5. Compute MI-based synergy scores
 6. Generate visualizations
 """
 import os
@@ -46,7 +46,12 @@ def run_full_pipeline(skip_existing=False, model_override=None):
     print("STEP 1: Generate Arithmetic Dataset")
     print("="*80)
 
-    from config import DATASET_PATH
+    from config import DATASET_PATH, DIFFICULTY_LEVELS, EXAMPLES_PER_OP_DIFFICULTY, OPERATIONS
+    print(f"Operations: {OPERATIONS}")
+    print(f"Difficulty levels: {DIFFICULTY_LEVELS}")
+    print(f"Examples per (op, difficulty): {EXAMPLES_PER_OP_DIFFICULTY}")
+    print(f"Total examples: {len(OPERATIONS) * len(DIFFICULTY_LEVELS) * EXAMPLES_PER_OP_DIFFICULTY}")
+
     if skip_existing and os.path.exists(DATASET_PATH):
         print(f"Dataset already exists at {DATASET_PATH}, skipping generation...")
         from dataset_generator import load_dataset
@@ -122,140 +127,50 @@ def run_full_pipeline(skip_existing=False, model_override=None):
         )
         save_probe_results(probe_results)
 
-    # Step 5: Compute interaction scores
+    # Step 5: Compute MI-based synergy
     print("\n" + "="*80)
-    print("STEP 5: Compute Interaction Scores")
+    print("STEP 5: Compute MI-Based Synergy (KSG Estimator)")
     print("="*80)
 
-    from interaction_analysis import compute_all_interactions, compute_baseline_interaction, save_interaction_scores
-    from config import INTERACTION_SCORES_PATH
+    from mi_synergy_analysis import (
+        compute_all_mi_synergy, save_mi_synergy_results
+    )
+    from config import RESULTS_DIR, MI_KSG_NEIGHBORS, MI_PCA_COMPONENTS
 
-    F1_all = probe_results['F1_all']
-    F2_all = probe_results['F2_all']
-    Z_all = hidden_states['Z_all']
-    correct_answers = df['correct_answer'].values
-    x1_values = df['x1'].values
-    x2_values = df['x2'].values
-
-    # Type 1: Interaction(F1, F2 → Z) - predicting model output
-    if skip_existing and os.path.exists(INTERACTION_SCORES_PATH):
-        print(f"Interaction scores (→ Z) already exist, skipping...")
+    mi_synergy_path = os.path.join(RESULTS_DIR, 'mi_synergy_scalar_probe.csv')
+    if skip_existing and os.path.exists(mi_synergy_path):
+        print(f"MI synergy results already exist at {mi_synergy_path}, skipping...")
+        from mi_synergy_analysis import load_mi_synergy_results
+        mi_results = load_mi_synergy_results()
     else:
-        print("\n[1/3] Computing interaction: F1, F2 → model output (Z)...")
-        interaction_df_all = compute_all_interactions(F1_all, F2_all, Z_all, df, target_name="model_output")
-        save_interaction_scores(interaction_df_all)
+        print("Computing MI-based synergy using low-dimensional representations...")
+        print(f"  - Scalar probe outputs (1D)")
+        print(f"  - PCA reduced features: {MI_PCA_COMPONENTS}")
+        print(f"  - KSG neighbors (k): {MI_KSG_NEIGHBORS}")
 
-    # Type 2: Interaction(F1, F2 → correct_answer) - predicting ground truth
-    gt_path = INTERACTION_SCORES_PATH.replace('.csv', '_gt.csv')
-    if not (skip_existing and os.path.exists(gt_path)):
-        print("\n[2/3] Computing interaction: F1, F2 → correct answer...")
-        interaction_df_gt = compute_all_interactions(
-            F1_all, F2_all, correct_answers, df, target_name="correct_answer"
+        mi_results = compute_all_mi_synergy(
+            probes_op1=probe_results['probes_op1'],
+            probes_op2=probe_results['probes_op2'],
+            h1_all=hidden_states['h1_all'],
+            h2_all=hidden_states['h2_all'],
+            F1_all=probe_results['F1_all'],
+            F2_all=probe_results['F2_all'],
+            Z_all=hidden_states['Z_all'],
+            df=df,
+            model=None,  # Skip log-prob method (requires re-inference)
+            tokenizer=None,
+            pca_components=MI_PCA_COMPONENTS,
+            k=MI_KSG_NEIGHBORS
         )
-        save_interaction_scores(interaction_df_gt, gt_path)
+        save_mi_synergy_results(mi_results)
 
-    # Type 3: Baseline interaction(x1, x2 → correct_answer) - raw numbers
-    baseline_path = INTERACTION_SCORES_PATH.replace('.csv', '_baseline.csv')
-    if not (skip_existing and os.path.exists(baseline_path)):
-        print("\n[3/3] Computing baseline interaction: x1, x2 → correct answer (no layers)...")
-        interaction_df_baseline = compute_baseline_interaction(
-            x1_values, x2_values, correct_answers, df
-        )
-        save_interaction_scores(interaction_df_baseline, baseline_path)
-
-    # Also compute for correct/incorrect (using model output Z)
-    correct_path = INTERACTION_SCORES_PATH.replace('.csv', '_correct.csv')
-    if not (skip_existing and os.path.exists(correct_path)):
-        print("\nComputing interaction scores for correct examples...")
-        interaction_df_correct = compute_all_interactions(
-            F1_all, F2_all, Z_all, df, filter_by={'is_correct': True}, target_name="model_output"
-        )
-        save_interaction_scores(interaction_df_correct, correct_path)
-
-    incorrect_path = INTERACTION_SCORES_PATH.replace('.csv', '_incorrect.csv')
-    if not (skip_existing and os.path.exists(incorrect_path)):
-        print("\nComputing interaction scores for incorrect examples...")
-        interaction_df_incorrect = compute_all_interactions(
-            F1_all, F2_all, Z_all, df, filter_by={'is_correct': False}, target_name="model_output"
-        )
-        save_interaction_scores(interaction_df_incorrect, incorrect_path)
-
-    # Step 6: Compute operation-specific probe metrics
+    # Step 6: Generate visualizations
     print("\n" + "="*80)
-    print("STEP 6: Compute Operation-Specific Probe Metrics")
-    print("="*80)
-
-    from compute_op_specific_probe_metrics import compute_and_save_op_specific_metrics
-    from config import RESULTS_DIR
-
-    h_output_all = hidden_states['h_output_all']
-    correct_answers = df['correct_answer'].values
-    ops = df['op'].values
-    probes_correct = probe_results['probes_correct']
-
-    compute_and_save_op_specific_metrics(
-        h_output_all, correct_answers, ops, probes_correct, RESULTS_DIR
-    )
-
-    # Step 7: Analyze interaction trajectories
-    print("\n" + "="*80)
-    print("STEP 7: Analyze Interaction Trajectories")
-    print("="*80)
-
-    from analyze_interaction_trajectories import (
-        compute_per_example_interactions,
-        analyze_high_vs_low_interaction
-    )
-
-    F1_all = probe_results['F1_all']
-    F2_all = probe_results['F2_all']
-    Z_all = hidden_states['Z_all']
-
-    print("Computing per-example interaction scores...")
-    per_example_df = compute_per_example_interactions(F1_all, F2_all, Z_all, df, None)
-
-    print("\nAnalyzing high vs low interaction (average)...")
-    results_avg = analyze_high_vs_low_interaction(per_example_df, metric='interaction_avg', top_k=100)
-
-    print("\nAnalyzing high vs low interaction (final layer)...")
-    results_final = analyze_high_vs_low_interaction(per_example_df, metric='interaction_final', top_k=100)
-
-    # Save analysis results
-    import pandas as pd
-    results_df = pd.DataFrame([
-        {
-            'op': op,
-            'metric': 'avg',
-            'top_k': stats['top_k'],
-            'top_k_accuracy': stats['top_k_accuracy'],
-            'bottom_k_accuracy': stats['bottom_k_accuracy'],
-            'overall_accuracy': stats['overall_accuracy'],
-            'difference': stats['diff']
-        }
-        for op, stats in results_avg.items()
-    ] + [
-        {
-            'op': op,
-            'metric': 'final',
-            'top_k': stats['top_k'],
-            'top_k_accuracy': stats['top_k_accuracy'],
-            'bottom_k_accuracy': stats['bottom_k_accuracy'],
-            'overall_accuracy': stats['overall_accuracy'],
-            'difference': stats['diff']
-        }
-        for op, stats in results_final.items()
-    ])
-    trajectory_results_path = os.path.join(RESULTS_DIR, 'interaction_trajectory_analysis.csv')
-    results_df.to_csv(trajectory_results_path, index=False)
-    print(f"Trajectory analysis saved to {trajectory_results_path}")
-
-    # Step 8: Generate visualizations
-    print("\n" + "="*80)
-    print("STEP 8: Generate Visualizations")
+    print("STEP 6: Generate Visualizations")
     print("="*80)
 
     from visualization import generate_all_plots
-    generate_all_plots()
+    generate_all_plots(mi_results)
 
     # Summary
     print("\n" + "="*80)
@@ -265,12 +180,12 @@ def run_full_pipeline(skip_existing=False, model_override=None):
     print(f"  - Dataset: {DATASET_PATH}")
     print(f"  - Hidden states: {HIDDEN_STATES_PATH}")
     print(f"  - Probe features: {FEATURES_PATH}")
-    print(f"  - Interaction scores: {INTERACTION_SCORES_PATH}")
-    print(f"  - Op-specific probe metrics: {os.path.join(RESULTS_DIR, 'probe_metrics_by_operation.csv')}")
-    print(f"  - Trajectory analysis: {trajectory_results_path}")
+    print(f"  - MI synergy (scalar probe): {os.path.join(RESULTS_DIR, 'mi_synergy_scalar_probe.csv')}")
+    print(f"  - MI synergy (PCA-3): {os.path.join(RESULTS_DIR, 'mi_synergy_pca_3.csv')}")
+    print(f"  - MI synergy (PCA-5): {os.path.join(RESULTS_DIR, 'mi_synergy_pca_5.csv')}")
+    print(f"  - MI synergy (baseline): {os.path.join(RESULTS_DIR, 'mi_synergy_raw_baseline.csv')}")
     from config import PLOTS_DIR
     print(f"  - Plots: {PLOTS_DIR}/")
-    print("\nSee README.md for details on interpreting results.")
 
 
 def main():
