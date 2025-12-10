@@ -49,8 +49,8 @@ OPERATIONS = ["add", "sub", "mul", "div", "max", "min"]
 DIFFICULTY_LEVELS = ["easy", "medium", "hard", "very_hard"]  # Added very_hard
 
 # Number of examples per (operation, difficulty) pair
-# For larger dataset: 6 ops × 4 difficulties × 1500 = 36,000 examples
-EXAMPLES_PER_OP_DIFFICULTY = 1500
+# 6 ops × 4 difficulties × 375 = 9,000 examples
+EXAMPLES_PER_OP_DIFFICULTY = 375
 
 # Difficulty ranges (inclusive) - expanded with harder examples
 DIFFICULTY_RANGES = {

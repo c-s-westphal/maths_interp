@@ -8,6 +8,10 @@ from tqdm import tqdm
 from config import MODEL_NAME, DEVICE, HIDDEN_STATES_PATH, set_seed
 
 
+# Default batch size for inference
+INFERENCE_BATCH_SIZE = 8
+
+
 def load_model_and_tokenizer():
     """Load the language model and tokenizer."""
     print(f"Loading model: {MODEL_NAME}")
@@ -19,7 +23,7 @@ def load_model_and_tokenizer():
 
     model = AutoModelForCausalLM.from_pretrained(
         MODEL_NAME,
-        torch_dtype=torch.float32,
+        torch_dtype=torch.float16,  # Use fp16 for faster inference
         device_map=None  # We'll manually move to device
     )
     model = model.to(DEVICE)
@@ -31,48 +35,78 @@ def load_model_and_tokenizer():
     return model, tokenizer
 
 
-def extract_hidden_states_single(model, input_ids, pos_op1, pos_op2):
+def extract_hidden_states_batch(model, input_ids_list, pos_op1_list, pos_op2_list, pad_token_id):
     """
-    Extract hidden states for a single example.
+    Extract hidden states for a batch of examples.
+
+    Args:
+        model: The language model
+        input_ids_list: List of input_ids (variable length)
+        pos_op1_list: List of operand 1 positions
+        pos_op2_list: List of operand 2 positions
+        pad_token_id: Token ID for padding
 
     Returns:
-        h1_all_layers: List of tensors, one per layer (shape: [hidden_dim])
-        h2_all_layers: List of tensors, one per layer (shape: [hidden_dim])
-        h_output_all_layers: List of tensors, one per layer (shape: [hidden_dim])
-        logits: Output logits at the last position (shape: [vocab_size])
+        h1_batch: [batch_size, num_layers, hidden_dim]
+        h2_batch: [batch_size, num_layers, hidden_dim]
+        h_output_batch: [batch_size, num_layers, hidden_dim]
+        logits_batch: [batch_size, vocab_size]
     """
+    batch_size = len(input_ids_list)
+
+    # Pad sequences to same length
+    max_len = max(len(ids) for ids in input_ids_list)
+    padded_input_ids = []
+    attention_mask = []
+    seq_lengths = []
+
+    for ids in input_ids_list:
+        seq_len = len(ids)
+        seq_lengths.append(seq_len)
+        padding_len = max_len - seq_len
+        # Pad on the LEFT so the last token position is consistent
+        padded_ids = [pad_token_id] * padding_len + list(ids)
+        mask = [0] * padding_len + [1] * seq_len
+        padded_input_ids.append(padded_ids)
+        attention_mask.append(mask)
+
+    # Convert to tensors
+    input_tensor = torch.tensor(padded_input_ids, device=DEVICE)
+    attention_tensor = torch.tensor(attention_mask, device=DEVICE)
+
     with torch.no_grad():
-        # Convert to tensor and add batch dimension
-        input_tensor = torch.tensor([input_ids], device=DEVICE)
+        outputs = model(
+            input_tensor,
+            attention_mask=attention_tensor,
+            output_hidden_states=True
+        )
 
-        # Run model with output_hidden_states=True
-        outputs = model(input_tensor, output_hidden_states=True)
+        hidden_states = outputs.hidden_states  # Tuple of [batch, seq_len, hidden_dim]
+        num_layers = len(hidden_states)
+        hidden_dim = hidden_states[0].shape[-1]
 
-        # Extract hidden states
-        # hidden_states is a tuple of (num_layers + 1) tensors
-        # Each tensor has shape [batch_size, seq_len, hidden_dim]
-        hidden_states = outputs.hidden_states
+        # Pre-allocate output arrays
+        h1_batch = np.zeros((batch_size, num_layers, hidden_dim), dtype=np.float32)
+        h2_batch = np.zeros((batch_size, num_layers, hidden_dim), dtype=np.float32)
+        h_output_batch = np.zeros((batch_size, num_layers, hidden_dim), dtype=np.float32)
 
-        # Extract operand representations from each layer
-        h1_all_layers = []
-        h2_all_layers = []
-        h_output_all_layers = []
+        # Extract hidden states at specific positions for each example
+        for i in range(batch_size):
+            # Adjust positions for left-padding
+            padding_offset = max_len - seq_lengths[i]
+            adj_pos_op1 = pos_op1_list[i] + padding_offset
+            adj_pos_op2 = pos_op2_list[i] + padding_offset
+            adj_pos_output = max_len - 1  # Last position (same for all after padding)
 
-        # Output position is the last token (where model predicts the answer)
-        pos_output = len(input_ids) - 1
+            for layer_idx in range(num_layers):
+                h1_batch[i, layer_idx] = hidden_states[layer_idx][i, adj_pos_op1, :].cpu().float().numpy()
+                h2_batch[i, layer_idx] = hidden_states[layer_idx][i, adj_pos_op2, :].cpu().float().numpy()
+                h_output_batch[i, layer_idx] = hidden_states[layer_idx][i, adj_pos_output, :].cpu().float().numpy()
 
-        for layer_idx in range(len(hidden_states)):
-            h1 = hidden_states[layer_idx][0, pos_op1, :].cpu().numpy()
-            h2 = hidden_states[layer_idx][0, pos_op2, :].cpu().numpy()
-            h_output = hidden_states[layer_idx][0, pos_output, :].cpu().numpy()
-            h1_all_layers.append(h1)
-            h2_all_layers.append(h2)
-            h_output_all_layers.append(h_output)
+        # Get logits at last position for each example
+        logits_batch = outputs.logits[:, -1, :].cpu().float().numpy()
 
-        # Extract logits at the last position
-        logits = outputs.logits[0, -1, :].cpu().numpy()
-
-    return h1_all_layers, h2_all_layers, h_output_all_layers, logits
+    return h1_batch, h2_batch, h_output_batch, logits_batch
 
 
 def decode_model_answer(model, tokenizer, input_ids, max_new_tokens=10, debug=False):
@@ -81,7 +115,6 @@ def decode_model_answer(model, tokenizer, input_ids, max_new_tokens=10, debug=Fa
 
     Returns:
         predicted_answer: The integer answer predicted by the model (or None if can't parse)
-        is_correct: Will be filled in later when comparing to ground truth
     """
     with torch.no_grad():
         input_tensor = torch.tensor([input_ids], device=DEVICE)
@@ -104,7 +137,6 @@ def decode_model_answer(model, tokenizer, input_ids, max_new_tokens=10, debug=Fa
             print(f"Generated: '{generated_text}'")
 
         # Try to extract an integer from the generated text
-        # Look for the first sequence of digits (possibly with a minus sign)
         import re
         match = re.search(r'-?\d+', generated_text.strip())
         if match:
@@ -122,9 +154,26 @@ def decode_model_answer(model, tokenizer, input_ids, max_new_tokens=10, debug=Fa
     return None
 
 
-def process_dataset_inference(df, model, tokenizer, batch_size=1):
+def decode_model_answers_batch(model, tokenizer, input_ids_list, max_new_tokens=10):
+    """
+    Decode model answers for a batch (still done one at a time for generation).
+    """
+    answers = []
+    for input_ids in input_ids_list:
+        answer = decode_model_answer(model, tokenizer, input_ids, max_new_tokens, debug=False)
+        answers.append(answer)
+    return answers
+
+
+def process_dataset_inference(df, model, tokenizer, batch_size=INFERENCE_BATCH_SIZE):
     """
     Run inference on entire dataset and extract hidden states.
+
+    Args:
+        df: DataFrame with input_ids, pos_op1, pos_op2, correct_answer
+        model: The language model
+        tokenizer: The tokenizer
+        batch_size: Batch size for inference
 
     Returns:
         Dictionary with:
@@ -135,7 +184,7 @@ def process_dataset_inference(df, model, tokenizer, batch_size=1):
             - predicted_answers: List of predicted answers
             - is_correct: Boolean array
     """
-    print("Running model inference and extracting hidden states...")
+    print(f"Running model inference with batch_size={batch_size}...")
 
     num_layers = model.config.num_hidden_layers + 1  # +1 for embedding layer
     hidden_dim = model.config.hidden_size
@@ -146,46 +195,57 @@ def process_dataset_inference(df, model, tokenizer, batch_size=1):
     h2_all = np.zeros((num_examples, num_layers, hidden_dim), dtype=np.float32)
     h_output_all = np.zeros((num_examples, num_layers, hidden_dim), dtype=np.float32)
     Z_all = np.zeros(num_examples, dtype=np.float32)
-    predicted_answers = []
-    is_correct = []
+    predicted_answers = [None] * num_examples
+    is_correct = np.zeros(num_examples, dtype=bool)
 
-    for idx, row in tqdm(df.iterrows(), total=len(df), desc="Extracting hidden states"):
-        input_ids = row['input_ids']
-        pos_op1 = row['pos_op1']
-        pos_op2 = row['pos_op2']
-        correct_answer = row['correct_answer']
+    pad_token_id = tokenizer.pad_token_id
 
-        # Extract hidden states
-        h1_layers, h2_layers, h_output_layers, logits = extract_hidden_states_single(
-            model, input_ids, pos_op1, pos_op2
+    # Process in batches
+    num_batches = (num_examples + batch_size - 1) // batch_size
+
+    for batch_idx in tqdm(range(num_batches), desc="Extracting hidden states"):
+        start_idx = batch_idx * batch_size
+        end_idx = min(start_idx + batch_size, num_examples)
+        batch_df = df.iloc[start_idx:end_idx]
+
+        # Prepare batch data
+        input_ids_list = batch_df['input_ids'].tolist()
+        pos_op1_list = batch_df['pos_op1'].tolist()
+        pos_op2_list = batch_df['pos_op2'].tolist()
+        correct_answers = batch_df['correct_answer'].tolist()
+
+        # Extract hidden states for batch
+        h1_batch, h2_batch, h_output_batch, logits_batch = extract_hidden_states_batch(
+            model, input_ids_list, pos_op1_list, pos_op2_list, pad_token_id
         )
 
         # Store hidden states
-        for layer_idx in range(num_layers):
-            h1_all[idx, layer_idx] = h1_layers[layer_idx]
-            h2_all[idx, layer_idx] = h2_layers[layer_idx]
-            h_output_all[idx, layer_idx] = h_output_layers[layer_idx]
+        h1_all[start_idx:end_idx] = h1_batch
+        h2_all[start_idx:end_idx] = h2_batch
+        h_output_all[start_idx:end_idx] = h_output_batch
 
-        # Get predicted token and its logit
-        predicted_token_id = np.argmax(logits)
-        Z_all[idx] = logits[predicted_token_id]
+        # Get predicted token and logit for each example
+        for i, (input_ids, logits, correct_answer) in enumerate(
+            zip(input_ids_list, logits_batch, correct_answers)
+        ):
+            idx = start_idx + i
+            predicted_token_id = np.argmax(logits)
+            Z_all[idx] = logits[predicted_token_id]
 
-        # Decode model's answer (debug first 5 examples)
-        debug = (idx < 5)
-        predicted_answer = decode_model_answer(model, tokenizer, input_ids, debug=debug)
-        predicted_answers.append(predicted_answer)
+        # Decode answers (still sequential for generation)
+        batch_answers = decode_model_answers_batch(model, tokenizer, input_ids_list)
 
-        # Check if correct
-        if predicted_answer is not None and predicted_answer == correct_answer:
-            is_correct.append(True)
-            if debug:
-                print(f"✓ Correct! Expected: {correct_answer}\n")
-        else:
-            is_correct.append(False)
-            if debug:
-                print(f"✗ Incorrect. Expected: {correct_answer}, Got: {predicted_answer}\n")
+        for i, (answer, correct_answer) in enumerate(zip(batch_answers, correct_answers)):
+            idx = start_idx + i
+            predicted_answers[idx] = answer
+            is_correct[idx] = (answer is not None and answer == correct_answer)
 
-    is_correct = np.array(is_correct)
+            # Debug first 5 examples
+            if idx < 5:
+                if is_correct[idx]:
+                    print(f"✓ Correct! Expected: {correct_answer}")
+                else:
+                    print(f"✗ Incorrect. Expected: {correct_answer}, Got: {answer}")
 
     print(f"\nModel accuracy: {is_correct.mean():.2%}")
     print("Accuracy by operation:")
